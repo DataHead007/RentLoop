@@ -111,7 +111,25 @@ export async function POST(request: Request) {
         status,
         notes,
         badminton_order_lines,
-      } = body
+      } = body as {
+        customer_name?: string
+        customer_phone?: string | null
+        customer_email?: string | null
+        customer_id?: string | null
+        service_type?: string
+        location?: string
+        service_date?: string
+        service_start_time?: string | null
+        service_end_time?: string | null
+        status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+        notes?: string | null
+        badminton_order_lines?: Array<{
+          line_type: 'income' | 'expense'
+          category: string
+          amount: number
+          notes?: string | null
+        }>
+      }
       if (
         !customer_name ||
         !service_type ||
@@ -148,7 +166,7 @@ export async function POST(request: Request) {
       return NextResponse.json(order, { status: 201 })
     }
 
-    const {
+      const {
       customer_name,
       customer_phone,
       customer_email,
@@ -164,7 +182,23 @@ export async function POST(request: Request) {
       third_party_rentals,
       shipping_fees,
       allowOverlap,
-    } = body
+    } = body as {
+      customer_name?: string
+      customer_phone?: string | null
+      customer_email?: string | null
+      customer_address?: string | null
+      start_date?: string
+      end_date?: string
+      total_amount?: number | null
+      total_deposit?: number | null
+      total_shipping_cost?: number | null
+      status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+      notes?: string | null
+      order_items?: Omit<OrderItem, 'id' | 'order_id' | 'created_at' | 'updated_at' | 'item'>[]
+      third_party_rentals?: ThirdPartyRental[] | null
+      shipping_fees?: ShippingFee[] | null
+      allowOverlap?: boolean
+    }
 
     if (!customer_name || !start_date || !end_date || !order_items || order_items.length === 0) {
       return apiError('INVALID_REQUEST', '客户名称、起止日期和至少一个订单项是必需的', 400)
@@ -258,8 +292,8 @@ export async function POST(request: Request) {
         ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
       },
       order_items,
-      third_party_rentals,
-      shipping_fees
+      third_party_rentals ?? undefined,
+      shipping_fees ?? undefined
     )
     
     // 仅已发货（in_progress）时更新资产为已租出，待发货（pending/confirmed）不占资产
@@ -308,10 +342,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const id = searchParams.get('id')
   try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    
     if (!id) {
       return apiError('INVALID_REQUEST', 'Order ID is required', 400)
     }
