@@ -1,23 +1,23 @@
 import { NextResponse } from 'next/server'
 import { getOrder, updateOrder, updateShippingFee } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 /**
  * PATCH 单条物流费用，并重算订单 total_shipping_cost
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string; feeId: string } }
+  { params }: { params: Promise<{ id: string; feeId: string }> }
 ) {
   try {
-    const orderId = params.id
-    const feeId = params.feeId
+    const { id: orderId, feeId } = await params
     const order = await getOrder(orderId)
     if (!order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      return apiError('NOT_FOUND', 'Order not found', 404)
     }
     const fee = order.shipping_fees?.find((f) => f.id === feeId)
     if (!fee) {
-      return NextResponse.json({ error: 'Shipping fee not found' }, { status: 404 })
+      return apiError('NOT_FOUND', 'Shipping fee not found', 404)
     }
 
     const body = await request.json()
@@ -43,9 +43,6 @@ export async function PATCH(
     return NextResponse.json(finalOrder)
   } catch (error: unknown) {
     console.error('Error updating shipping fee:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to update shipping fee' },
-      { status: 500 }
-    )
+    return apiError('SHIPPING_FEE_UPDATE_FAILED', error instanceof Error ? error.message : 'Failed to update shipping fee', 500)
   }
 }

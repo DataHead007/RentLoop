@@ -223,7 +223,7 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
                     onSelect={(date) => setFormData({ ...formData, end_date: date })}
                     disabled={(date) => 
                       date < new Date() || 
-                      (formData.start_date && date < formData.start_date)
+                      !!(formData.start_date && date < formData.start_date)
                     }
                     initialFocus
                   />

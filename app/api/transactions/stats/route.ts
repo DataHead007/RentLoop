@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseServer } from '@/lib/supabase/server'
+import { apiError } from '@/lib/api/response'
 
 export async function GET(request: Request) {
   try {
@@ -8,54 +9,52 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate')
     const type = searchParams.get('type')
     const category = searchParams.get('category')
-    const businessLine = searchParams.get('businessLine') as 'rental' | 'badminton' | 'youtube' | null
+    const businessLine = searchParams.get('businessLine') as
+      | 'rental'
+      | 'badminton'
+      | 'youtube'
+      | 'wechat_video'
+      | 'all'
+      | null
 
-    let query = supabase
-      .from('transactions')
-      .select('amount, type, category, business_line')
+    const safeType = type === 'income' || type === 'expense' ? type : null
+    const safeBusinessLine = businessLine && businessLine !== 'all' ? businessLine : null
 
-    if (startDate) query = query.gte('transaction_date', startDate)
-    if (endDate) query = query.lte('transaction_date', endDate)
-    if (type && (type === 'income' || type === 'expense')) query = query.eq('type', type)
-    if (category) query = query.eq('category', category)
-    if (businessLine && businessLine !== 'all') query = query.eq('business_line', businessLine)
+    const { data: summaryRows, error } = await supabaseServer.rpc('get_transaction_summary', {
+      p_start_date: startDate || null,
+      p_end_date: endDate || null,
+      p_type: safeType,
+      p_category: category || null,
+      p_business_line: safeBusinessLine,
+    })
 
-    const { data: transactions, error } = await query
-    
     if (error) throw error
     
-    // 计算统计信息
     let totalIncome = 0
     let totalExpense = 0
-    let transactionCount = transactions?.length || 0
+    let transactionCount = 0
     
-    transactions?.forEach(tx => {
-      const amount = parseFloat(tx.amount.toString()) || 0
-      if (tx.type === 'income') {
+    const incomeByCategory: Record<string, number> = {}
+    const expenseByCategory: Record<string, number> = {}
+
+    ;(summaryRows || []).forEach((row: any) => {
+      const amount = parseFloat(row.total_amount?.toString() || '0') || 0
+      const count = Number(row.tx_count) || 0
+      const rowCategory = row.category || '其他'
+      transactionCount += count
+
+      if (row.type === 'income') {
         totalIncome += amount
-      } else if (tx.type === 'expense') {
-        totalExpense += Math.abs(amount) // 支出是负数，取绝对值
+        incomeByCategory[rowCategory] = (incomeByCategory[rowCategory] || 0) + amount
+      } else if (row.type === 'expense') {
+        totalExpense += amount
+        expenseByCategory[rowCategory] = (expenseByCategory[rowCategory] || 0) + amount
       }
     })
     
     const netProfit = totalIncome - totalExpense
-    
-    // 按类别统计
-    const incomeByCategory: Record<string, number> = {}
-    const expenseByCategory: Record<string, number> = {}
-    
-    transactions?.forEach(tx => {
-      const amount = parseFloat(tx.amount.toString()) || 0
-      const category = tx.category || '其他'
-      
-      if (tx.type === 'income') {
-        incomeByCategory[category] = (incomeByCategory[category] || 0) + amount
-      } else if (tx.type === 'expense') {
-        expenseByCategory[category] = (expenseByCategory[category] || 0) + Math.abs(amount)
-      }
-    })
-    
-    return NextResponse.json({
+
+    const payload = {
       totalIncome,
       totalExpense,
       netProfit,
@@ -68,12 +67,19 @@ export async function GET(request: Request) {
         category,
         amount,
       })),
+    }
+
+    // 双轨兼容：
+    // 1) 保留历史顶层字段（现有前端直接读取）
+    // 2) 新增 success + data 结构（新协议）
+    return NextResponse.json({
+      ...payload,
+      success: true,
+      data: payload,
     })
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch transaction stats'
     console.error('Error fetching transaction stats:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch transaction stats' },
-      { status: 500 }
-    )
+    return apiError('TRANSACTION_STATS_FETCH_FAILED', message, 500)
   }
 }

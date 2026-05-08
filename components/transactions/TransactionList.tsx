@@ -17,11 +17,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { TrendingUp, TrendingDown, Plus, Trash2, Edit, Sparkles, Filter, Package } from 'lucide-react'
-import type { Transaction } from '@/lib/types/database'
+import { TrendingUp, TrendingDown, Plus, Trash2, Edit, Sparkles, Filter, Package, AlertCircle } from 'lucide-react'
+import type { Transaction, BusinessLine } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
 
 interface TransactionStats {
   totalIncome: number
@@ -44,8 +46,13 @@ export function TransactionList() {
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null)
   const [deleting, setDeleting] = useState(false)
   
-  // 统计范围状态（同时控制统计和交易列表）
-  const [statsBusinessLine, setStatsBusinessLine] = useState<'all' | 'rental' | 'badminton' | 'youtube'>('rental')
+  // 统计范围状态（同时控制统计和交易列表）；默认全部，与各业务线汇总一起看
+  const [statsBusinessLine, setStatsBusinessLine] = useState<'all' | BusinessLine>('all')
+  /** 仅在「全部」时加载：各业务线小计（便于对照，点击可钻取） */
+  const [lineBreakdown, setLineBreakdown] = useState<
+    Partial<Record<BusinessLine, { income: number; expense: number; net: number }>>
+  >({})
+  const [lineBreakdownLoading, setLineBreakdownLoading] = useState(false)
   const [categories, setCategories] = useState<string[]>([])
   
   // 资产估值状态
@@ -63,9 +70,18 @@ export function TransactionList() {
   })
   // 残值率输入框的临时状态（允许为空字符串）
   const [depreciationRateInput, setDepreciationRateInput] = useState<string>('')
+  // 加载错误信息（用于向用户展示具体原因）
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  const toastError = (err: unknown, fallback: string) => {
+    const message = err instanceof ApiFetchError ? err.message : err instanceof Error ? err.message : fallback
+    const code = err instanceof ApiFetchError ? err.code : undefined
+    toast.error(message, code ? { description: code } : undefined)
+  }
   
   // 主数据加载 useEffect（当统计范围变化时）
   useEffect(() => {
+    setLoadError(null)
     const controller = new AbortController()
     
     Promise.all([
@@ -81,6 +97,45 @@ export function TransactionList() {
     
     // Cleanup: abort any in-flight requests when filter changes or component unmounts
     return () => controller.abort()
+  }, [statsBusinessLine])
+
+  useEffect(() => {
+    if (statsBusinessLine !== 'all') {
+      setLineBreakdown({})
+      setLineBreakdownLoading(false)
+      return
+    }
+    const lines: BusinessLine[] = ['rental', 'badminton', 'youtube', 'wechat_video']
+    const ac = new AbortController()
+    setLineBreakdownLoading(true)
+    Promise.all(
+      lines.map((bl) =>
+        apiFetch<{
+          totalIncome?: number
+          totalExpense?: number
+          netProfit?: number
+        }>(`/api/transactions/stats?businessLine=${bl}`, { signal: ac.signal })
+      )
+    )
+      .then((rows) => {
+        const next: Partial<Record<BusinessLine, { income: number; expense: number; net: number }>> = {}
+        lines.forEach((bl, i) => {
+          const d = rows[i]
+          next[bl] = {
+            income: Number(d?.totalIncome) || 0,
+            expense: Number(d?.totalExpense) || 0,
+            net: Number(d?.netProfit) || 0,
+          }
+        })
+        setLineBreakdown(next)
+      })
+      .catch((e) => {
+        if (e instanceof Error && e.name === 'AbortError') return
+        console.error('line breakdown stats failed', e)
+      })
+      .finally(() => setLineBreakdownLoading(false))
+
+    return () => ac.abort()
   }, [statsBusinessLine])
 
   // 监听订单更新事件，自动刷新交易列表和统计数据
@@ -146,6 +201,8 @@ export function TransactionList() {
       if (error instanceof Error && error.name === 'AbortError') {
         return // Request was cancelled, do nothing
       }
+      const msg = error instanceof Error ? error.message : 'Failed to load transactions'
+      setLoadError(msg)
       console.error('Failed to load transactions:', error)
       // 错误时清空数据，避免显示旧数据
       setTransactions([])
@@ -165,12 +222,7 @@ export function TransactionList() {
         params.append('businessLine', statsBusinessLine)
       }
 
-      const response = await fetch(`/api/transactions/stats?${params.toString()}`, { signal })
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Failed to fetch stats')
-      }
-      const data = await response.json()
+      const data = await apiFetch<any>(`/api/transactions/stats?${params.toString()}`, { signal })
       
       // 验证数据格式
       if (data && typeof data === 'object') {
@@ -194,7 +246,10 @@ export function TransactionList() {
       if (error instanceof Error && error.name === 'AbortError') {
         return // Request was cancelled, do nothing
       }
+      const msg = error instanceof Error ? error.message : 'Failed to load stats'
+      setLoadError(msg)
       console.error('Failed to load stats:', error)
+      toastError(error, '统计加载失败，请重试')
       // 错误时重置为默认值
       setStats({
         totalIncome: 0,
@@ -228,6 +283,8 @@ export function TransactionList() {
         })
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Failed to fetch assets value'
+      setLoadError(msg)
       console.error('Failed to load assets value:', error)
       setAssetsValue({
         totalPurchasePrice: 0,
@@ -288,14 +345,7 @@ export function TransactionList() {
 
     setDeleting(true)
     try {
-      const response = await fetch(`/api/transactions?id=${transactionToDelete.id}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || '删除失败')
-      }
+      await apiFetch(`/api/transactions?id=${transactionToDelete.id}`, { method: 'DELETE' })
 
       await loadTransactions()
       await loadStats()
@@ -303,7 +353,7 @@ export function TransactionList() {
       setTransactionToDelete(null)
     } catch (error) {
       console.error('Failed to delete transaction:', error)
-      alert(error instanceof Error ? error.message : '删除失败，请重试')
+      toastError(error, '删除失败，请重试')
     } finally {
       setDeleting(false)
     }
@@ -336,32 +386,111 @@ export function TransactionList() {
           <p className="text-muted-foreground">管理所有收入和支出记录</p>
         </div>
         <Button asChild>
-          <Link href="/transactions/new">
+          <Link
+            href={
+              statsBusinessLine === 'all'
+                ? '/transactions/new'
+                : `/transactions/new?businessLine=${statsBusinessLine}`
+            }
+          >
             <Plus className="mr-2 h-4 w-4" />
             新增交易
           </Link>
         </Button>
       </div>
 
-      {/* 统计切换 */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">统计范围：</span>
-        <div className="flex rounded-lg border bg-muted/50 p-0.5">
-          {(['rental', 'badminton', 'youtube', 'all'] as const).map((bl) => (
-            <button
-              key={bl}
-              type="button"
-              onClick={() => setStatsBusinessLine(bl)}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                statsBusinessLine === bl ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {bl === 'all' ? '全部' : bl === 'rental' ? '租赁业务' : bl === 'badminton' ? '羽毛球副业' : 'YouTube频道'}
-            </button>
-          ))}
+      {loadError && (
+        <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{loadError}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto text-destructive hover:text-destructive"
+            onClick={() => setLoadError(null)}
+          >
+            关闭
+          </Button>
         </div>
+      )}
+
+      {/* 统计切换 */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground shrink-0">统计范围：</span>
+          <div className="flex flex-wrap rounded-lg border bg-muted/50 p-0.5 gap-0.5">
+            {(['all', 'rental', 'badminton', 'youtube', 'wechat_video'] as const).map((bl) => (
+              <button
+                key={bl}
+                type="button"
+                onClick={() => setStatsBusinessLine(bl)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  statsBusinessLine === bl ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {bl === 'all'
+                  ? '全部'
+                  : bl === 'rental'
+                    ? '租赁业务'
+                    : bl === 'badminton'
+                      ? '羽毛球副业'
+                      : bl === 'youtube'
+                        ? 'YouTube频道'
+                        : '微信视频号'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground pl-0 sm:pl-[4.5rem]">
+          默认展示全部业务线汇总；点选某一业务线后，下方卡片与表格仅含该线。新增交易会带上当前选中的业务线。
+        </p>
       </div>
+
+      {statsBusinessLine === 'all' && (
+        <Card className={cn(lineBreakdownLoading && 'opacity-70')}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">各业务线对照</CardTitle>
+            <CardDescription>点击某一卡片可查看该线交易明细与统计</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {(['rental', 'badminton', 'youtube', 'wechat_video'] as const).map((bl) => {
+                const row = lineBreakdown[bl]
+                const label =
+                  bl === 'rental'
+                    ? '租赁业务'
+                    : bl === 'badminton'
+                      ? '羽毛球副业'
+                      : bl === 'youtube'
+                        ? 'YouTube'
+                        : '微信视频号'
+                return (
+                  <button
+                    key={bl}
+                    type="button"
+                    onClick={() => setStatsBusinessLine(bl)}
+                    className="rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent/50 hover:border-primary/30"
+                  >
+                    <div className="text-sm font-medium">{label}</div>
+                    <div
+                      className={cn(
+                        'mt-1 text-lg font-semibold tabular-nums',
+                        (row?.net ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                      )}
+                    >
+                      {row ? formatCurrency(row.net) : lineBreakdownLoading ? '…' : formatCurrency(0)}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      收 {row ? formatCurrency(row.income) : '—'} / 支 {row ? formatCurrency(row.expense) : '—'}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 统计卡片 */}
       <div className="grid gap-4 md:grid-cols-5">
@@ -427,7 +556,7 @@ export function TransactionList() {
         </Card>
         
         {/* 资产预估残值 - 仅显示租赁业务或全部时 */}
-        {statsBusinessLine !== 'badminton' && statsBusinessLine !== 'youtube' && (
+        {(statsBusinessLine === 'rental' || statsBusinessLine === 'all') && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">资产预估残值</CardTitle>

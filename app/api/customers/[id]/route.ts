@@ -1,42 +1,36 @@
 import { NextResponse } from 'next/server'
 import { getCustomer, deleteCustomer } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const customer = await getCustomer(params.id)
+    const { id } = await params
+    const customer = await getCustomer(id)
     if (!customer) {
-      return NextResponse.json(
-        { error: 'Customer not found' },
-        { status: 404 }
-      )
+      return apiError('NOT_FOUND', 'Customer not found', 404)
     }
     return NextResponse.json(customer)
   } catch (error) {
     console.error('Error fetching customer:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch customer' },
-      { status: 500 }
-    )
+    return apiError('CUSTOMER_FETCH_FAILED', 'Failed to fetch customer', 500)
   }
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await deleteCustomer(params.id)
+    const { id } = await params
+    await deleteCustomer(id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting customer:', error)
     const errorMessage = error instanceof Error ? error.message : 'Failed to delete customer'
     const statusCode = errorMessage.includes('关联订单') ? 400 : 500
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: statusCode }
-    )
+    return apiError('CUSTOMER_DELETE_FAILED', errorMessage, statusCode)
   }
 }

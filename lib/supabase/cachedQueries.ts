@@ -4,6 +4,7 @@
  */
 
 import { localCache, type CacheTable } from '@/lib/storage/localCache'
+import type { Item, ItemWithStats, Order, Customer, Category } from '@/lib/types/database'
 import { 
   getItems as getItemsFromSupabase,
   getItemsWithStats as getItemsWithStatsFromSupabase,
@@ -11,11 +12,6 @@ import {
   getOrder as getOrderFromSupabase,
   getCustomers as getCustomersFromSupabase,
   getCategories as getCategoriesFromSupabase,
-  type Item,
-  type ItemWithStats,
-  type Order,
-  type Customer,
-  type Category,
 } from './queries'
 
 /**
@@ -55,7 +51,10 @@ async function syncFromSupabase<T extends { id: string }>(
     
     return data
   } catch (error) {
-    console.error(`[LocalCache] Failed to sync ${table}:`, error)
+    const errorInfo = error instanceof Error
+      ? { message: error.message, stack: error.stack, name: error.name }
+      : { raw: error, json: (() => { try { return JSON.stringify(error) } catch { return '[unserializable]' } })() }
+    console.error(`[LocalCache] Failed to sync ${table}:`, errorInfo)
     // 同步失败时返回本地缓存
     return await localCache.get<T>(table)
   } finally {

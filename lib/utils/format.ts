@@ -7,6 +7,7 @@ import {
   endOfWeek,
   startOfMonth,
   endOfMonth,
+  addMonths,
   startOfYear,
   endOfYear,
 } from 'date-fns'
@@ -72,11 +73,11 @@ export function getDaysUntilEnd(endDate: string | Date): number {
 
 /**
  * 根据预设获取日期范围（周一为一周开始）
- * @param preset 预设：week=本周, month=本月, year=本年
+ * @param preset 预设：week=本周, month=本月, last_month=上月, next_month=下月, year=本年
  * @returns { startDate: YYYY-MM-DD, endDate: YYYY-MM-DD }
  */
 export function getDateRangeForPreset(
-  preset: 'week' | 'month' | 'year'
+  preset: 'week' | 'month' | 'last_month' | 'next_month' | 'year'
 ): { startDate: string; endDate: string } {
   const now = new Date()
   let start: Date
@@ -87,6 +88,14 @@ export function getDateRangeForPreset(
   } else if (preset === 'month') {
     start = startOfMonth(now)
     end = endOfMonth(now)
+  } else if (preset === 'last_month') {
+    const prev = addMonths(now, -1)
+    start = startOfMonth(prev)
+    end = endOfMonth(prev)
+  } else if (preset === 'next_month') {
+    const next = addMonths(now, 1)
+    start = startOfMonth(next)
+    end = endOfMonth(next)
   } else {
     start = startOfYear(now)
     end = endOfYear(now)

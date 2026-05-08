@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCustomers } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 export async function GET() {
   try {
@@ -7,9 +8,6 @@ export async function GET() {
     return NextResponse.json(customers)
   } catch (error) {
     console.error('Error fetching customers:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch customers' },
-      { status: 500 }
-    )
+    return apiError('CUSTOMERS_FETCH_FAILED', 'Failed to fetch customers', 500)
   }
 }

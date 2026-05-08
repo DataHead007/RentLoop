@@ -25,7 +25,6 @@ import type { ItemWithStats } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
-import { PerformanceMonitor } from '@/lib/utils/performance'
 
 export function ItemList() {
   const searchParams = useSearchParams()
@@ -54,16 +53,11 @@ export function ItemList() {
       setLoading(true)
       setError(null)
       
-      const startTime = performance.now()
       const res = await fetch('/api/items', { cache: 'no-store' })
-      const duration = performance.now() - startTime
-      
       if (!res.ok) {
         throw new Error('加载资产列表失败')
       }
       const data = await res.json()
-      
-      PerformanceMonitor.record('api:items:list', duration)
       setItems(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Failed to load items:', error)
@@ -275,6 +269,7 @@ export function ItemList() {
     const averageROI = itemsWithROI > 0 ? totalROI / itemsWithROI : 0
     const availableCount = statusCounts.available
     const rentedCount = statusCounts.rented + statusCounts.in_use
+    const soldCount = statusCounts.sold
 
     return {
       statusCounts,
@@ -282,6 +277,7 @@ export function ItemList() {
       averageROI,
       availableCount,
       rentedCount,
+      soldCount,
       totalCount: items.length,
     }
   }, [items])
@@ -456,7 +452,7 @@ export function ItemList() {
                 {stats.totalCount} 件
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                可用 {stats.availableCount} | 出租中 {stats.rentedCount}
+                可用 {stats.availableCount} | 出租中 {stats.rentedCount} | 已售出 {stats.soldCount}
               </p>
             </CardContent>
           </Card>

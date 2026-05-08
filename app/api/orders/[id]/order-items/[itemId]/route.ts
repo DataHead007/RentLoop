@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getOrder, updateOrder, updateOrderItem } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 /** 计算租赁天数 */
 function getRentalDays(startDate: string, endDate: string): number {
@@ -14,18 +15,17 @@ function getRentalDays(startDate: string, endDate: string): number {
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string; itemId: string } }
+  { params }: { params: Promise<{ id: string; itemId: string }> }
 ) {
   try {
-    const orderId = params.id
-    const itemId = params.itemId
+    const { id: orderId, itemId } = await params
     const order = await getOrder(orderId)
     if (!order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      return apiError('NOT_FOUND', 'Order not found', 404)
     }
     const orderItem = order.order_items?.find((i) => i.id === itemId)
     if (!orderItem) {
-      return NextResponse.json({ error: 'Order item not found' }, { status: 404 })
+      return apiError('NOT_FOUND', 'Order item not found', 404)
     }
 
     const body = await request.json()
@@ -66,9 +66,6 @@ export async function PATCH(
     return NextResponse.json(finalOrder)
   } catch (error: unknown) {
     console.error('Error updating order item:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to update order item' },
-      { status: 500 }
-    )
+    return apiError('ORDER_ITEM_UPDATE_FAILED', error instanceof Error ? error.message : 'Failed to update order item', 500)
   }
 }

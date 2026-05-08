@@ -3,16 +3,17 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Package, Calendar, Tag, Receipt, Activity, Users, Link2, Gauge, Settings } from 'lucide-react'
+import { Package, Calendar, Tag, Receipt, Activity, Users, Link2, Settings, LayoutList } from 'lucide-react'
 
 const navigation = [
   { name: '资产', href: '/items', icon: Package },
-  { name: '订单', href: '/orders', icon: Calendar },
+  { name: '租赁订单', href: '/rental/orders', icon: Calendar },
+  { name: '羽毛球订单', href: '/badminton/orders', icon: Activity },
+  { name: '全部订单', href: '/orders', icon: LayoutList },
   { name: '客户管理', href: '/customers', icon: Users },
   { name: '账号绑定', href: '/account-bindings', icon: Link2 },
   { name: '交易记录', href: '/transactions', icon: Receipt },
   { name: '变更追踪', href: '/change-events', icon: Activity },
-  { name: '性能监控', href: '/performance', icon: Gauge },
   { name: '品类管理', href: '/categories', icon: Tag },
   { name: '设置', href: '/settings', icon: Settings },
 ]
@@ -24,7 +25,7 @@ export function Navbar() {
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center">
         <Link
-          href="/orders"
+          href="/rental/orders"
           className="mr-6 flex items-center space-x-2 hover:opacity-80 transition-opacity"
         >
           <Package className="h-5 w-5" />

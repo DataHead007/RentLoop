@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +14,7 @@ import { CalendarIcon, Loader2, Plus, X, Trash2, ChevronDown, ChevronUp, Copy, I
 import { formatDateShort, formatCurrency, formatDateToLocalString } from '@/lib/utils/format'
 import { calculateRentalAmount } from '@/lib/utils/availability'
 import { localCache } from '@/lib/storage/localCache'
-import { getGeminiApiKey } from '@/lib/settings/storageKeys'
+import { getSiliconflowApiKey } from '@/lib/settings/storageKeys'
 import { cn } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -74,6 +75,8 @@ interface OrderFormData {
 interface OrderFormProps {
   orderId?: string // 可选的订单 ID，如果提供则进入编辑模式
   onSuccess?: () => void
+  /** 创建/更新成功后跳转的列表路径（未传 onSuccess 时生效），默认全部订单 */
+  afterSubmitRedirect?: string
 }
 
 // 解析客户信息的工具函数（基于手机号分隔）
@@ -186,7 +189,7 @@ function parseCustomerInfo(text: string): {
   return result
 }
 
-export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
+export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders' }: OrderFormProps) {
   const router = useRouter()
   const [items, setItems] = useState<ItemWithOccupancy[]>([])
   const [loading, setLoading] = useState(false)
@@ -215,6 +218,9 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     third_party_rentals: [],
     shipping_fees: [],
   })
+
+  /** 新建订单时同一次「提交意图」复用同一幂等键，避免网络失败后重试产生重复订单 */
+  const createIdempotencyKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     loadMonthlyOrderCount()
@@ -270,7 +276,16 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     try {
       setInitialLoading(true)
       const response = await fetch(`/api/orders/${orderId}`)
-      if (!response.ok) throw new Error('Failed to fetch order')
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        const detail = (err as { errorDetail?: { message?: string } }).errorDetail?.message
+        const message =
+          detail ||
+          (err as { message?: string; error?: string }).message ||
+          (err as { error?: string }).error ||
+          '加载订单失败'
+        throw new Error(message)
+      }
       const order = await response.json()
       setExistingOrderStatus(order.status ?? null)
 
@@ -391,7 +406,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     const newItem: OrderItemForm = {
       item_id: '',
       subtotal: 0,
-      fee_rate: prev?.fee_rate ?? null,
+      fee_rate: prev?.fee_rate ?? 0.006,
       deposit: prev?.deposit ?? 0,
       quantity: prev?.quantity ?? 1,
       notes: '',
@@ -405,9 +420,24 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
   }
 
   function removeOrderItem(index: number) {
+    const removedItem = formData.order_items[index]
+    if (!removedItem) return
+    const nextItems = formData.order_items.filter((_, i) => i !== index)
     setFormData({
       ...formData,
-      order_items: formData.order_items.filter((_, i) => i !== index),
+      order_items: nextItems,
+    })
+    toast('订单项已删除', {
+      action: {
+        label: '撤销',
+        onClick: () => {
+          setFormData((prev) => {
+            const restored = [...prev.order_items]
+            restored.splice(index, 0, removedItem)
+            return { ...prev, order_items: restored }
+          })
+        },
+      },
     })
   }
 
@@ -436,7 +466,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     newItems.splice(index + 1, 0, {
       item_id: '',
       subtotal: 0,
-      fee_rate: prev?.fee_rate ?? null,
+      fee_rate: prev?.fee_rate ?? 0.006,
       deposit: prev?.deposit ?? 0,
       quantity: prev?.quantity ?? 1,
       notes: '',
@@ -467,7 +497,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     newItems.splice(index + 1, 0, {
       item_id: '',
       subtotal: 0,
-      fee_rate: prev?.fee_rate ?? null,
+      fee_rate: prev?.fee_rate ?? 0.006,
       deposit: prev?.deposit ?? 0,
       quantity: prev?.quantity ?? 1,
       notes: '',
@@ -511,9 +541,24 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
   }
 
   function removeThirdPartyRental(index: number) {
+    const removedRental = formData.third_party_rentals[index]
+    if (!removedRental) return
+    const nextRentals = formData.third_party_rentals.filter((_, i) => i !== index)
     setFormData({
       ...formData,
-      third_party_rentals: formData.third_party_rentals.filter((_, i) => i !== index),
+      third_party_rentals: nextRentals,
+    })
+    toast('第三方租赁明细已删除', {
+      action: {
+        label: '撤销',
+        onClick: () => {
+          setFormData((prev) => {
+            const restored = [...prev.third_party_rentals]
+            restored.splice(index, 0, removedRental)
+            return { ...prev, third_party_rentals: restored }
+          })
+        },
+      },
     })
   }
 
@@ -541,9 +586,24 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
   }
 
   function removeShippingFee(index: number) {
+    const removedFee = formData.shipping_fees[index]
+    if (!removedFee) return
+    const nextFees = formData.shipping_fees.filter((_, i) => i !== index)
     setFormData({
       ...formData,
-      shipping_fees: formData.shipping_fees.filter((_, i) => i !== index),
+      shipping_fees: nextFees,
+    })
+    toast('物流费用明细已删除', {
+      action: {
+        label: '撤销',
+        onClick: () => {
+          setFormData((prev) => {
+            const restored = [...prev.shipping_fees]
+            restored.splice(index, 0, removedFee)
+            return { ...prev, shipping_fees: restored }
+          })
+        },
+      },
     })
   }
 
@@ -559,25 +619,26 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     let totalAmount = 0 // 总租金（仅订单项收入，不包含第三方租赁成本和物流费用）
     let totalDeposit = 0
     let totalShippingCost = 0 // 物流费用（单独计算）
+    let totalThirdPartyCost = 0 // 第三方转租实际成本（与交易「转租支出」一致，计入利润）
+    let totalThirdPartySupplierDeposit = 0 // 付供应商押金（可退，不计入客户总押金，也不计入订单页利润）
 
     formData.order_items.forEach((item) => {
       if (item.item_id && item.subtotal > 0) {
-        // subtotal 是单个物品的总租金，乘以 quantity 得到该订单项的总金额
         totalAmount += item.subtotal * item.quantity
         totalDeposit += item.deposit * item.quantity
       }
     })
 
-    // 第三方租赁是成本，不是收入，只计算押金，不加入totalAmount
     formData.third_party_rentals.forEach((rental) => {
-      totalDeposit += rental.deposit || 0
+      totalThirdPartyCost += rental.rental_cost || 0
+      totalThirdPartySupplierDeposit += rental.deposit || 0
     })
 
     formData.shipping_fees.forEach((fee) => {
       totalShippingCost += fee.amount || 0
     })
 
-    return { totalAmount, totalDeposit, totalShippingCost }
+    return { totalAmount, totalDeposit, totalShippingCost, totalThirdPartyCost, totalThirdPartySupplierDeposit }
   }
 
   // 计算日租金（作为参考指标）
@@ -640,7 +701,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
 
     setLoading(true)
     try {
-      const { totalAmount, totalDeposit, totalShippingCost } = calculateTotals()
+      const { totalAmount, totalDeposit, totalShippingCost, totalThirdPartyCost, totalThirdPartySupplierDeposit } = calculateTotals()
 
       // 计算租赁天数
       const { days } = calculateRentalAmount(
@@ -734,6 +795,15 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
         notes: fee.notes || null,
       }))
 
+      if (!orderId) {
+        if (!createIdempotencyKeyRef.current) {
+          createIdempotencyKeyRef.current =
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2, 14)}`
+        }
+      }
+
       const orderData = {
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone || null,
@@ -750,6 +820,9 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
         third_party_rentals: thirdPartyRentals,
         shipping_fees: shippingFees,
         ...(allowOverlap && { allowOverlap: true }),
+        ...(!orderId && createIdempotencyKeyRef.current
+          ? { idempotency_key: createIdempotencyKeyRef.current }
+          : {}),
       }
 
       const url = orderId ? `/api/orders/${orderId}` : '/api/orders'
@@ -766,6 +839,10 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
         throw new Error(error.error || `Failed to ${orderId ? 'update' : 'create'} order`)
       }
 
+      if (!orderId) {
+        createIdempotencyKeyRef.current = null
+      }
+
       // 清除订单缓存，确保跳转后列表获取最新数据
       await localCache.clear('orders').catch(console.error)
       // 触发自定义事件，通知其他页面刷新统计数据
@@ -776,7 +853,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
       if (onSuccess) {
         onSuccess()
       } else {
-        router.push('/orders')
+        router.push(afterSubmitRedirect)
       }
     } catch (error) {
       console.error(`Failed to ${orderId ? 'update' : 'create'} order:`, error)
@@ -822,9 +899,9 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     setAiToastMessage(null)
     try {
       const itemNames = items.map((i) => i.name)
-      const apiKey = getGeminiApiKey()
+      const apiKey = getSiliconflowApiKey()
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (apiKey) headers['X-Gemini-Api-Key'] = apiKey
+      if (apiKey) headers['X-SiliconFlow-Api-Key'] = apiKey
       const res = await fetch('/api/ai/parse-order', {
         method: 'POST',
         headers,
@@ -865,7 +942,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
           notes: '',
         })
       }
-      const rate = monthlyOrderCount !== null ? (monthlyOrderCount >= 5 ? 0.002 : 0.006) : 0.006
+      const rate = getRecommendedFeeRate()
       const orderItemsWithRate = newOrderItems.map((o) => ({ ...o, fee_rate: rate }))
       const startDate = data.start_date
         ? new Date(data.start_date)
@@ -916,9 +993,9 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
           const base64 = (reader.result as string)?.replace(/^data:image\/\w+;base64,/, '') || ''
           const mimeType = file.type || 'image/png'
           try {
-            const apiKey = getGeminiApiKey()
+            const apiKey = getSiliconflowApiKey()
             const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-            if (apiKey) headers['X-Gemini-Api-Key'] = apiKey
+            if (apiKey) headers['X-SiliconFlow-Api-Key'] = apiKey
             const res = await fetch('/api/ai/parse-customer', {
               method: 'POST',
               headers,
@@ -956,9 +1033,9 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
       // 正则未解析出姓名或电话时，尝试 LLM
       if ((!parsed.name || !parsed.phone) && pastedText.trim()) {
         try {
-          const apiKey = getGeminiApiKey()
+          const apiKey = getSiliconflowApiKey()
           const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-          if (apiKey) headers['X-Gemini-Api-Key'] = apiKey
+          if (apiKey) headers['X-SiliconFlow-Api-Key'] = apiKey
           const res = await fetch('/api/ai/parse-customer', {
             method: 'POST',
             headers,
@@ -988,7 +1065,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
     }
   }
 
-  const { totalAmount, totalDeposit, totalShippingCost } = calculateTotals()
+  const { totalAmount, totalDeposit, totalShippingCost, totalThirdPartyCost, totalThirdPartySupplierDeposit } = calculateTotals()
   const { days } = formData.start_date && formData.end_date
     ? calculateRentalAmount(formData.start_date, formData.end_date, 1)
     : { days: 0 }
@@ -1463,10 +1540,10 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
                       <div className="space-y-2">
                         <Label>绑定设备（可选）</Label>
                         <Select
-                          value={item.device_id && item.device_id.trim() !== '' ? item.device_id : undefined}
-                          onValueChange={(value) => {
+value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none__'}
+                            onValueChange={(value) => {
                             updateOrderItem(index, {
-                              device_id: value || undefined,
+                              device_id: value === '__none__' ? undefined : value,
                               // 如果取消设备绑定，也清除权限类型
                               account_binding_type: value ? item.account_binding_type : undefined,
                             })
@@ -1476,7 +1553,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
                             <SelectValue placeholder="选择设备（可选，单独租赁账号时不选）" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={undefined}>单独租赁（不绑定设备）</SelectItem>
+                            <SelectItem value="__none__">单独租赁（不绑定设备）</SelectItem>
                             {deviceItems.map((device) => (
                               <SelectItem key={device.id} value={device.id}>
                                 {device.name}
@@ -1781,7 +1858,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>押金 (¥)</Label>
+                  <Label>押金（付给供应商）(¥)</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -1974,7 +2051,7 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
       </Collapsible>
 
       {/* 金额汇总 */}
-      {(totalAmount > 0 || totalDeposit > 0 || totalShippingCost > 0) && (
+      {(totalAmount > 0 || totalDeposit > 0 || totalShippingCost > 0 || totalThirdPartyCost > 0 || totalThirdPartySupplierDeposit > 0) && (
         <Card>
           <CardHeader>
             <CardTitle>金额汇总</CardTitle>
@@ -1990,8 +2067,25 @@ export function OrderFormV2({ orderId, onSuccess }: OrderFormProps) {
                 <span className="font-medium">{formatCurrency(totalShippingCost)}</span>
               </div>
             )}
+            {totalThirdPartyCost > 0 && (
+              <div className="flex justify-between text-lg">
+                <span>第三方转租成本：</span>
+                <span className="font-medium">{formatCurrency(totalThirdPartyCost)}</span>
+              </div>
+            )}
+            {totalThirdPartySupplierDeposit > 0 && (
+              <div className="flex justify-between text-lg">
+                <span>付供应商押金（可退）：</span>
+                <span className="font-medium text-muted-foreground">{formatCurrency(totalThirdPartySupplierDeposit)}</span>
+              </div>
+            )}
+            {(totalThirdPartyCost > 0 || totalThirdPartySupplierDeposit > 0) && (
+              <p className="text-xs text-muted-foreground -mt-1">
+                可退押金不计入客户总押金，也不计入订单列表「利润」成本
+              </p>
+            )}
             <div className="flex justify-between text-lg">
-              <span>总押金：</span>
+              <span>总押金（客户）：</span>
               <span className="font-bold">{formatCurrency(totalDeposit)}</span>
             </div>
           </CardContent>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseServer as supabase } from '@/lib/supabase/server'
+import { apiError } from '@/lib/api/response'
 
 export async function GET(request: Request) {
   try {
@@ -65,36 +66,48 @@ export async function GET(request: Request) {
       // 检查是否是表不存在的错误（PostgreSQL 错误代码 42P01）
       if (error.code === '42P01' || error.message?.includes('does not exist')) {
         console.warn('transaction_change_events table does not exist yet. Please run the migration SQL.')
-        return NextResponse.json({
+        const payload = {
           events: [],
           total: 0,
           limit,
           offset,
+        }
+        return NextResponse.json({
+          ...payload,
+          success: true,
+          data: payload,
         })
       }
       throw error
     }
     
-    return NextResponse.json({
+    const payload = {
       events: events || [],
       total: count || 0,
       limit,
       offset,
+    }
+    return NextResponse.json({
+      ...payload,
+      success: true,
+      data: payload,
     })
   } catch (error: any) {
     console.error('Error fetching change events:', error)
     // 对于其他错误，也尝试返回空数组而不是 500
     if (error?.code === '42P01' || error?.message?.includes('does not exist')) {
-      return NextResponse.json({
+      const payload = {
         events: [],
         total: 0,
         limit: parseInt(new URL(request.url).searchParams.get('limit') || '100', 10),
         offset: parseInt(new URL(request.url).searchParams.get('offset') || '0', 10),
+      }
+      return NextResponse.json({
+        ...payload,
+        success: true,
+        data: payload,
       })
     }
-    return NextResponse.json(
-      { error: error?.message || 'Failed to fetch change events' },
-      { status: 500 }
-    )
+    return apiError('CHANGE_EVENTS_FETCH_FAILED', error?.message || 'Failed to fetch change events', 500)
   }
 }

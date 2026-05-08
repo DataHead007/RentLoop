@@ -74,3 +74,8 @@ rentloop/
 ### Supabase Storage
 
 需要创建 Storage bucket 用于存储序列号照片，详见 `supabase/storage-setup.md`。
+
+### 数据库迁移
+
+数据库迁移顺序与上线检查清单见 `supabase/MIGRATIONS.md`。
+建议不要只手动执行单个 SQL，而是按该文档顺序完整执行并自检。

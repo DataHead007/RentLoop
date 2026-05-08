@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createShippingFee, deleteShippingFee, getOrder, updateOrder } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 export async function POST(request: Request) {
   try {
@@ -14,10 +15,7 @@ export async function POST(request: Request) {
     return NextResponse.json(fee, { status: 201 })
   } catch (error: any) {
     console.error('Error creating shipping fee:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to create shipping fee' },
-      { status: 500 }
-    )
+    return apiError('SHIPPING_FEE_CREATE_FAILED', error.message || 'Failed to create shipping fee', 500)
   }
 }
 
@@ -27,19 +25,13 @@ export async function DELETE(request: Request) {
     const id = searchParams.get('id')
     
     if (!id) {
-      return NextResponse.json(
-        { error: 'Shipping fee ID is required' },
-        { status: 400 }
-      )
+      return apiError('INVALID_REQUEST', 'Shipping fee ID is required', 400)
     }
     
     await deleteShippingFee(id)
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Error deleting shipping fee:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to delete shipping fee' },
-      { status: 500 }
-    )
+    return apiError('SHIPPING_FEE_DELETE_FAILED', error.message || 'Failed to delete shipping fee', 500)
   }
 }

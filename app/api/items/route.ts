@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getItemsWithStats, createItem, deleteItem, createTransaction, getItemsAvailableForDateRange, getItemsWithOccupancyInfo } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 export async function GET(request: Request) {
   try {
@@ -34,10 +35,7 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     console.error('Error fetching items:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch items' },
-      { status: 500 }
-    )
+    return apiError('ITEMS_FETCH_FAILED', 'Failed to fetch items', 500)
   }
 }
 
@@ -103,10 +101,7 @@ export async function POST(request: Request) {
       }
     }
     
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    )
+    return apiError('ITEM_CREATE_FAILED', errorMessage, 500)
   }
 }
 
@@ -116,10 +111,7 @@ export async function DELETE(request: Request) {
     const id = searchParams.get('id')
     
     if (!id) {
-      return NextResponse.json(
-        { error: 'Item ID is required' },
-        { status: 400 }
-      )
+      return apiError('INVALID_REQUEST', 'Item ID is required', 400)
     }
     
     await deleteItem(id)
@@ -131,15 +123,9 @@ export async function DELETE(request: Request) {
     
     // 处理外键约束错误
     if (error?.code === '23503' || error?.message?.includes('foreign key')) {
-      return NextResponse.json(
-        { error: '无法删除：该设备下还有关联的订单，请先删除所有关联订单' },
-        { status: 400 }
-      )
+      return apiError('ITEM_DELETE_CONFLICT', '无法删除：该设备下还有关联的订单，请先删除所有关联订单', 400)
     }
     
-    return NextResponse.json(
-      { error: 'Failed to delete item' },
-      { status: 500 }
-    )
+    return apiError('ITEM_DELETE_FAILED', 'Failed to delete item', 500)
   }
 }

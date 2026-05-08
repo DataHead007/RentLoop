@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseServer as supabase } from '@/lib/supabase/server'
+import { apiError } from '@/lib/api/response'
 
 export async function GET(request: Request) {
   try {
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
     if (error) {
       if (error.code === '42P01' || error.message?.includes('does not exist')) {
         console.warn('transaction_change_events table does not exist yet. Please run the migration SQL.')
-        return NextResponse.json({
+        const payload = {
           totalDeltaIncome: 0,
           totalDeltaExpense: 0,
           totalDeltaNetProfit: 0,
@@ -36,6 +37,11 @@ export async function GET(request: Request) {
           deleteCount: 0,
           autoCreatedCount: 0,
           manualCount: 0,
+        }
+        return NextResponse.json({
+          ...payload,
+          success: true,
+          data: payload,
         })
       }
       throw error
@@ -64,7 +70,7 @@ export async function GET(request: Request) {
       else manualCount++
     })
     
-    return NextResponse.json({
+    const payload = {
       totalDeltaIncome,
       totalDeltaExpense,
       totalDeltaNetProfit,
@@ -74,12 +80,17 @@ export async function GET(request: Request) {
       deleteCount,
       autoCreatedCount,
       manualCount,
+    }
+    return NextResponse.json({
+      ...payload,
+      success: true,
+      data: payload,
     })
   } catch (error: any) {
     console.error('Error fetching change events stats:', error)
     // 对于其他错误，也尝试返回空统计
     if (error?.code === '42P01' || error?.message?.includes('does not exist')) {
-      return NextResponse.json({
+      const payload = {
         totalDeltaIncome: 0,
         totalDeltaExpense: 0,
         totalDeltaNetProfit: 0,
@@ -89,11 +100,13 @@ export async function GET(request: Request) {
         deleteCount: 0,
         autoCreatedCount: 0,
         manualCount: 0,
+      }
+      return NextResponse.json({
+        ...payload,
+        success: true,
+        data: payload,
       })
     }
-    return NextResponse.json(
-      { error: error?.message || 'Failed to fetch change events stats' },
-      { status: 500 }
-    )
+    return apiError('CHANGE_EVENTS_STATS_FETCH_FAILED', error?.message || 'Failed to fetch change events stats', 500)
   }
 }

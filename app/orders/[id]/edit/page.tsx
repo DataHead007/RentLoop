@@ -21,12 +21,21 @@ export default function EditOrderPage() {
   async function loadOrder() {
     try {
       const res = await fetch(`/api/orders/${orderId}`)
-      if (!res.ok) throw new Error('加载订单失败')
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        const detail = (err as { errorDetail?: { message?: string } }).errorDetail?.message
+        throw new Error(
+          detail ||
+            (err as { error?: string; message?: string }).message ||
+            (err as { error?: string }).error ||
+            '加载订单失败'
+        )
+      }
       const data: Order = await res.json()
       setOrder(data)
     } catch (err) {
       console.error(err)
-      alert('加载订单失败')
+      alert(err instanceof Error ? err.message : '加载订单失败')
       router.push('/orders')
     } finally {
       setLoading(false)

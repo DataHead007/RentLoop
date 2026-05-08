@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import useSWR, { useSWRConfig } from 'swr'
+import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,16 +19,26 @@ import type { Order } from '@/lib/types/database'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
 
 export function OrderDetail() {
   const params = useParams()
   const router = useRouter()
   const orderId = params.id as string
-  const [order, setOrder] = useState<Order | null>(null)
-  const [loading, setLoading] = useState(true)
   const [checkinDialogOpen, setCheckinDialogOpen] = useState(false)
   const [shippingDialogOpen, setShippingDialogOpen] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [confirmStatus, setConfirmStatus] = useState<{ label: string; status: Order['status']; warning?: string } | null>(null)
   // 就地编辑：当前正在编辑的区块
   const [editingBlock, setEditingBlock] = useState<'customer' | 'dates' | 'badminton-service' | null>(null)
   const [savingBlock, setSavingBlock] = useState<'customer' | 'dates' | 'badminton-service' | null>(null)
@@ -80,43 +92,73 @@ export function OrderDetail() {
   // 羽毛球服务信息就地编辑
   const [draftBadmintonService, setDraftBadmintonService] = useState<{ service_type: string; location: string }>({ service_type: '', location: '' })
 
-  useEffect(() => {
-    loadOrder()
-  }, [orderId])
+  const orderKey = useMemo(() => `/api/orders/${orderId}`, [orderId])
+  const { mutate: globalMutate } = useSWRConfig()
+
+  const {
+    data: order,
+    isLoading: loading,
+    mutate: mutateOrder,
+  } = useSWR<Order>(orderKey, (key) => apiFetch<Order>(key), {
+    keepPreviousData: true,
+  })
 
   useEffect(() => {
-    const onOrderUpdated = () => loadOrder()
+    const onOrderUpdated = () => mutateOrder()
     window.addEventListener('orderUpdated', onOrderUpdated)
     return () => window.removeEventListener('orderUpdated', onOrderUpdated)
-  }, [orderId])
+  }, [mutateOrder])
 
-  async function loadOrder() {
-    try {
-      setLoading(true)
-      const response = await fetch(`/api/orders/${orderId}`, { cache: 'no-store' })
-      if (!response.ok) throw new Error('Failed to fetch order')
-      const data = await response.json()
-      setOrder(data)
-    } catch (error) {
-      console.error('Failed to load order:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const toastError = useCallback((err: unknown, fallback: string) => {
+    const message = err instanceof ApiFetchError ? err.message : err instanceof Error ? err.message : fallback
+    const code = err instanceof ApiFetchError ? err.code : undefined
+    toast.error(message, code ? { description: code } : undefined)
+  }, [])
+
+  const revalidateDashboards = useCallback(async () => {
+    await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/transactions/stats'))
+    await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/items/assets-value'))
+  }, [globalMutate])
+
+  const revalidateOrdersLists = useCallback(async () => {
+    await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/orders?'))
+  }, [globalMutate])
 
   /** 就地编辑：仅更新订单主表字段（客户、日期、备注等），不碰 order_items/shipping */
   async function patchOrderFields(payload: Record<string, unknown>) {
     if (!orderId) return
-    const response = await fetch(`/api/orders/${orderId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      throw new Error((err as { error?: string }).error || '保存失败')
+    if (!order) {
+      await apiFetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      await mutateOrder()
+    } else {
+      const snapshot = order
+      await mutateOrder(
+        async (current) => {
+          await apiFetch(`/api/orders/${orderId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          const base = current ?? snapshot
+          return { ...base, ...(payload as any) } as Order
+        },
+        {
+          optimisticData: (current) => {
+            const base = current ?? snapshot
+            return { ...base, ...(payload as any) } as Order
+          },
+          rollbackOnError: true,
+          revalidate: true,
+          populateCache: true,
+        }
+      )
     }
-    await loadOrder()
+    await revalidateDashboards()
+    await revalidateOrdersLists()
     window.dispatchEvent(new CustomEvent('orderUpdated'))
     localStorage.setItem('orderUpdated', Date.now().toString())
   }
@@ -157,26 +199,34 @@ export function OrderDetail() {
 
     setUpdatingStatus(true)
     try {
-      const response = await fetch(`/api/orders/${order.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || '更新状态失败')
-      }
-
-      await loadOrder()
-      
-      // 触发自定义事件，通知其他页面刷新统计数据
+      const snapshot = order
+      await mutateOrder(
+        async (current) => {
+          await apiFetch(`/api/orders/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
+          })
+          const base = current ?? snapshot
+          return { ...base, status: newStatus } as Order
+        },
+        {
+          optimisticData: (current) => {
+            const base = current ?? snapshot
+            return { ...base, status: newStatus } as Order
+          },
+          rollbackOnError: true,
+          revalidate: true,
+          populateCache: true,
+        }
+      )
+      await revalidateDashboards()
+      await revalidateOrdersLists()
       window.dispatchEvent(new CustomEvent('orderUpdated'))
-      // 同时使用 localStorage 通知其他标签页
       localStorage.setItem('orderUpdated', Date.now().toString())
     } catch (error) {
       console.error('Failed to update order status:', error)
-      alert(error instanceof Error ? error.message : '更新状态失败，请重试')
+      toastError(error, '更新状态失败，请重试')
     } finally {
       setUpdatingStatus(false)
     }
@@ -260,7 +310,7 @@ export function OrderDetail() {
     const labels: Record<string, string> = {
       pending: '待发货',
       confirmed: '待发货', // 兼容历史订单，与 pending 合并
-      in_progress: '进行中',
+      in_progress: '待收货',
       completed: '已完成',
       cancelled: '已取消',
     }
@@ -268,6 +318,45 @@ export function OrderDetail() {
   }
 
   const canCheckin = !isBadminton && order?.status === 'in_progress'
+
+  type TimelineStep = { key: string; label: string }
+  type TimelineData = { steps: TimelineStep[]; current: number; cancelled: boolean }
+
+  const getTimelineSteps = (): TimelineData => {
+    if (!order) return { steps: [], current: 0, cancelled: false }
+
+    if (isBadminton) {
+      const steps = [
+        { key: 'pending', label: '待上课' },
+        { key: 'in_progress', label: '进行中' },
+        { key: 'completed', label: '已完成' },
+      ]
+      const current =
+        order.status === 'cancelled'
+          ? 0
+          : order.status === 'completed'
+            ? 2
+            : order.status === 'in_progress'
+              ? 1
+              : 0
+      return { steps, current, cancelled: order.status === 'cancelled' }
+    }
+
+    const steps = [
+      { key: 'pending', label: '待发货' },
+      { key: 'in_progress', label: '待收货' },
+      { key: 'completed', label: '已完成' },
+    ]
+    const current =
+      order.status === 'cancelled'
+        ? 0
+        : order.status === 'completed'
+          ? 2
+          : order.status === 'in_progress'
+            ? 1
+            : 0
+    return { steps, current, cancelled: order.status === 'cancelled' }
+  }
 
   if (loading) {
     return (
@@ -325,12 +414,14 @@ export function OrderDetail() {
               variant="outline"
               onClick={() => {
                 const previousAction = getPreviousStatusAction()!
-                const confirmMessage = order.status === 'completed' 
-                  ? '确定要回退订单状态吗？这将删除已生成的交易记录。'
-                  : '确定要回退订单状态吗？'
-                if (confirm(confirmMessage)) {
-                  updateOrderStatus(previousAction.status)
-                }
+                setConfirmStatus({
+                  label: previousAction.label,
+                  status: previousAction.status,
+                  warning:
+                    order.status === 'completed'
+                      ? '这将删除已生成的自动交易记录。'
+                      : undefined,
+                })
               }}
               disabled={updatingStatus}
             >
@@ -373,6 +464,50 @@ export function OrderDetail() {
           )}
         </div>
       </div>
+
+      {(() => {
+        const timeline = getTimelineSteps()
+        if (!timeline.steps.length) return null
+
+        return (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">订单进度</CardTitle>
+              <CardDescription>
+                {timeline.cancelled ? '当前订单已取消（流程中止）' : '当前订单所处阶段'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 md:gap-4">
+                {timeline.steps.map((step, index) => {
+                  const done = index <= timeline.current && !timeline.cancelled
+                  const isCurrent = index === timeline.current && !timeline.cancelled
+                  return (
+                    <div key={step.key} className="flex items-center flex-1 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={cn(
+                            'inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-medium',
+                            done ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30 text-muted-foreground'
+                          )}
+                        >
+                          {index + 1}
+                        </span>
+                        <span className={cn('text-sm truncate', isCurrent ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
+                          {step.label}
+                        </span>
+                      </div>
+                      {index < timeline.steps.length - 1 && (
+                        <div className={cn('mx-2 h-0.5 flex-1', done ? 'bg-primary/70' : 'bg-muted')} />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* 订单项列表 / 羽毛球收支明细 */}
       {(() => {
@@ -484,7 +619,7 @@ export function OrderDetail() {
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
-                            {item.item?.name || '-'}
+                            {(item.item?.short_name?.trim() || item.item?.name) ?? '-'}
                             {item.item?.brand && item.item?.model && (
                               <div className="text-sm text-muted-foreground">
                                 {item.item.brand} {item.item.model}
@@ -554,12 +689,14 @@ export function OrderDetail() {
                                           const err = await res.json().catch(() => ({}))
                                           throw new Error((err as { error?: string }).error || '保存失败')
                                         }
-                                        await loadOrder()
+                                        await mutateOrder()
+                                        await revalidateDashboards()
+                                        await revalidateOrdersLists()
                                         window.dispatchEvent(new CustomEvent('orderUpdated'))
                                         localStorage.setItem('orderUpdated', Date.now().toString())
                                         setEditingItemId(null)
                                       } catch (e) {
-                                        alert(e instanceof Error ? e.message : '保存失败')
+                                        toastError(e, '保存失败')
                                       } finally {
                                         setSavingItemId(null)
                                       }
@@ -675,7 +812,7 @@ export function OrderDetail() {
                               })
                               setEditingBlock(null)
                             } catch (e) {
-                              alert(e instanceof Error ? e.message : '保存失败')
+                              toastError(e, '保存失败')
                             } finally {
                               setSavingBlock(null)
                             }
@@ -765,7 +902,7 @@ export function OrderDetail() {
                                 })
                                 setEditingBlock(null)
                               } catch (e) {
-                                alert(e instanceof Error ? e.message : '保存失败')
+                                toastError(e, '保存失败')
                               } finally {
                                 setSavingBlock(null)
                               }
@@ -847,7 +984,7 @@ export function OrderDetail() {
                             })
                             setEditingBlock(null)
                           } catch (e) {
-                            alert(e instanceof Error ? e.message : '保存失败')
+                            toastError(e, '保存失败')
                           } finally {
                             setSavingBlock(null)
                           }
@@ -957,14 +1094,33 @@ export function OrderDetail() {
                     <p className="font-medium">
                       总租金: {formatCurrency(order.total_amount)}
                     </p>
-                    {order.total_deposit > 0 && (
-                      <p className="text-sm">
-                        总押金: {formatCurrency(order.total_deposit)}
-                      </p>
-                    )}
                     {order.total_shipping_cost > 0 && (
                       <p className="text-sm text-muted-foreground">
                         物流费用: {formatCurrency(order.total_shipping_cost)}
+                      </p>
+                    )}
+                    {order.third_party_rentals && order.third_party_rentals.length > 0 && (() => {
+                      const rentalCostSum = order.third_party_rentals.reduce((sum, r) => sum + (r.rental_cost || 0), 0)
+                      const supplierDepositSum = order.third_party_rentals.reduce((sum, r) => sum + (r.deposit || 0), 0)
+                      if (rentalCostSum <= 0 && supplierDepositSum <= 0) return null
+                      return (
+                        <>
+                          {rentalCostSum > 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              第三方转租成本: {formatCurrency(rentalCostSum)}
+                            </p>
+                          )}
+                          {supplierDepositSum > 0 && (
+                            <p className="text-sm text-muted-foreground">
+                              付供应商押金（可退）: {formatCurrency(supplierDepositSum)}
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
+                    {order.total_deposit > 0 && (
+                      <p className="text-sm">
+                        总押金（客户）: {formatCurrency(order.total_deposit)}
                       </p>
                     )}
                   </>
@@ -1048,7 +1204,7 @@ export function OrderDetail() {
                         })
                         setEditingBlock(null)
                       } catch (e) {
-                        alert(e instanceof Error ? e.message : '保存失败')
+                        toastError(e, '保存失败')
                       } finally {
                         setSavingBlock(null)
                       }
@@ -1145,7 +1301,7 @@ export function OrderDetail() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label>押金</Label>
+                            <Label>押金（付给供应商）</Label>
                             <Input
                               type="number"
                               min={0}
@@ -1211,12 +1367,14 @@ export function OrderDetail() {
                                   const err = await res.json().catch(() => ({}))
                                   throw new Error((err as { error?: string }).error || '保存失败')
                                 }
-                                await loadOrder()
+                                await mutateOrder()
+                                await revalidateDashboards()
+                                await revalidateOrdersLists()
                                 window.dispatchEvent(new CustomEvent('orderUpdated'))
                                 localStorage.setItem('orderUpdated', Date.now().toString())
                                 setEditingRentalId(null)
                               } catch (e) {
-                                alert(e instanceof Error ? e.message : '保存失败')
+                                toastError(e, '保存失败')
                               } finally {
                                 setSavingRentalId(null)
                               }
@@ -1240,7 +1398,7 @@ export function OrderDetail() {
                               <p className="font-medium">{formatCurrency(rental.rental_cost)}</p>
                               {rental.deposit > 0 && (
                                 <p className="text-sm text-muted-foreground">
-                                  押金: {formatCurrency(rental.deposit)}
+                                  付供应商押金: {formatCurrency(rental.deposit)}
                                 </p>
                               )}
                             </div>
@@ -1381,12 +1539,14 @@ export function OrderDetail() {
                                         const err = await res.json().catch(() => ({}))
                                         throw new Error((err as { error?: string }).error || '保存失败')
                                       }
-                                      await loadOrder()
+                                      await mutateOrder()
+                                      await revalidateDashboards()
+                                      await revalidateOrdersLists()
                                       window.dispatchEvent(new CustomEvent('orderUpdated'))
                                       localStorage.setItem('orderUpdated', Date.now().toString())
                                       setEditingFeeId(null)
                                     } catch (e) {
-                                      alert(e instanceof Error ? e.message : '保存失败')
+                                      toastError(e, '保存失败')
                                     } finally {
                                       setSavingFeeId(null)
                                     }
@@ -1486,7 +1646,13 @@ export function OrderDetail() {
           order={order}
           open={shippingDialogOpen}
           onOpenChange={setShippingDialogOpen}
-          onSuccess={loadOrder}
+          onSuccess={async () => {
+            await mutateOrder()
+            await revalidateDashboards()
+            await revalidateOrdersLists()
+            window.dispatchEvent(new CustomEvent('orderUpdated'))
+            localStorage.setItem('orderUpdated', Date.now().toString())
+          }}
         />
       )}
 
@@ -1496,9 +1662,40 @@ export function OrderDetail() {
           order={order}
           open={checkinDialogOpen}
           onOpenChange={setCheckinDialogOpen}
-          onSuccess={loadOrder}
+          onSuccess={async () => {
+            await mutateOrder()
+            await revalidateDashboards()
+            await revalidateOrdersLists()
+            window.dispatchEvent(new CustomEvent('orderUpdated'))
+            localStorage.setItem('orderUpdated', Date.now().toString())
+          }}
         />
       )}
+
+      <AlertDialog open={!!confirmStatus} onOpenChange={(open) => !open && !updatingStatus && setConfirmStatus(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认操作</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要执行「{confirmStatus?.label}」吗？
+              {confirmStatus?.warning ? <span className="block mt-2 text-destructive">{confirmStatus.warning}</span> : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={updatingStatus}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={updatingStatus}
+              onClick={() => {
+                if (!confirmStatus) return
+                void updateOrderStatus(confirmStatus.status)
+                setConfirmStatus(null)
+              }}
+            >
+              确认
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

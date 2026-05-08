@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server'
 import { updateThirdPartyRental } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
-    const rental = await updateThirdPartyRental(params.id, body)
+    const rental = await updateThirdPartyRental(id, body)
     return NextResponse.json(rental)
   } catch (error: any) {
     console.error('Error updating third-party rental:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to update third-party rental' },
-      { status: 500 }
-    )
+    return apiError('THIRD_PARTY_RENTAL_UPDATE_FAILED', error.message || 'Failed to update third-party rental', 500)
   }
 }

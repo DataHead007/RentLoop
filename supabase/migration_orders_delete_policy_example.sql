@@ -1,0 +1,12 @@
+-- 可选：删除订单「点了删除刷新还在」时，多半是 RLS 未允许 DELETE（anon 返回成功但删 0 行）。
+-- 推荐做法：在 Next 服务端 .env.local 配置 SUPABASE_SERVICE_ROLE_KEY（勿提交 Git、勿暴露给浏览器）。
+--
+-- 若坚持只用 anon 跑 API，可在 Supabase SQL Editor 中按需启用下面策略（仅适合信任环境，anon 密钥仍会出现在前端构建产物时需自行评估风险）：
+
+-- ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+--
+-- CREATE POLICY "orders_allow_delete_anon"
+-- ON public.orders
+-- FOR DELETE
+-- TO anon
+-- USING (true);

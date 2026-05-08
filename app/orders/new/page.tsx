@@ -43,9 +43,20 @@ export default function NewOrderPage() {
             </div>
           </button>
         </div>
-        <div className="mt-6">
+        <div className="mt-6 space-y-1">
+          <p className="text-xs text-muted-foreground">
+            日常也可从导航直接进入{' '}
+            <Link href="/rental/orders" className="underline hover:text-foreground">
+              租赁订单
+            </Link>{' '}
+            或{' '}
+            <Link href="/badminton/orders" className="underline hover:text-foreground">
+              羽毛球订单
+            </Link>
+            。
+          </p>
           <Link href="/orders" className="text-sm text-muted-foreground hover:underline">
-            返回订单列表
+            返回全部订单
           </Link>
         </div>
       </div>

@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { updateShippingFee, getOrder, updateOrder } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
-    const fee = await updateShippingFee(params.id, body)
+    const fee = await updateShippingFee(id, body)
     const orderId = fee.order_id
     if (orderId) {
       const order = await getOrder(orderId)
@@ -17,9 +19,6 @@ export async function PATCH(
     return NextResponse.json(fee)
   } catch (error: any) {
     console.error('Error updating shipping fee:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to update shipping fee' },
-      { status: 500 }
-    )
+    return apiError('SHIPPING_FEE_UPDATE_FAILED', error.message || 'Failed to update shipping fee', 500)
   }
 }

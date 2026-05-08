@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import type { Transaction, Order, Item } from '@/lib/types/database'
+import type { Transaction, Order, Item, BusinessLine } from '@/lib/types/database'
 import {
   BADMINTON_INCOME_CATEGORIES,
   BADMINTON_EXPENSE_CATEGORIES,
@@ -28,14 +28,20 @@ import {
   YOUTUBE_INCOME_CATEGORIES,
   YOUTUBE_EXPENSE_CATEGORIES,
 } from '@/lib/constants/youtube'
+import {
+  WECHAT_VIDEO_INCOME_CATEGORIES,
+  WECHAT_VIDEO_EXPENSE_CATEGORIES,
+} from '@/lib/constants/wechatVideo'
 
 interface TransactionFormProps {
   transactionId?: string
   orderId?: string // 可选：从订单页面创建交易时传入
   itemId?: string // 可选：从资产页面创建交易时传入
+  /** 新建时默认业务线（例如从交易页带 query 进入） */
+  defaultBusinessLine?: BusinessLine
 }
 
-export function TransactionForm({ transactionId, orderId, itemId }: TransactionFormProps) {
+export function TransactionForm({ transactionId, orderId, itemId, defaultBusinessLine }: TransactionFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -50,7 +56,7 @@ export function TransactionForm({ transactionId, orderId, itemId }: TransactionF
     category: '',
     description: '',
     transaction_date: format(new Date(), 'yyyy-MM-dd'),
-    business_line: 'rental' as 'rental' | 'badminton' | 'youtube',
+    business_line: (defaultBusinessLine ?? 'rental') as BusinessLine,
   })
   
   // 金额输入框的状态（用于公式计算）
@@ -96,7 +102,7 @@ export function TransactionForm({ transactionId, orderId, itemId }: TransactionF
         category: data.category || '',
         description: data.description || '',
         transaction_date: data.transaction_date,
-        business_line: (data as any).business_line || 'rental',
+        business_line: (data.business_line as BusinessLine) || 'rental',
       })
       setAmountInput(amountStr)
       setDate(new Date(data.transaction_date))
@@ -331,8 +337,17 @@ export function TransactionForm({ transactionId, orderId, itemId }: TransactionF
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || '保存失败')
+        let message = '保存失败'
+        try {
+          const data: unknown = await response.json()
+          if (typeof data === 'object' && data !== null && 'error' in data) {
+            const maybeError = (data as { error?: unknown }).error
+            if (typeof maybeError === 'string' && maybeError.trim()) message = maybeError
+          }
+        } catch {
+          // ignore JSON parse errors; keep default message
+        }
+        throw new Error(message)
       }
 
       window.dispatchEvent(new CustomEvent('transactionUpdated'))
@@ -375,6 +390,12 @@ export function TransactionForm({ transactionId, orderId, itemId }: TransactionF
         expense: [...YOUTUBE_EXPENSE_CATEGORIES],
       }
     }
+    if (formData.business_line === 'wechat_video') {
+      return {
+        income: [...WECHAT_VIDEO_INCOME_CATEGORIES],
+        expense: [...WECHAT_VIDEO_EXPENSE_CATEGORIES],
+      }
+    }
     return {
       income: ['租金收入', '押金收入', '配件出售收入', '赔偿收入', '其他收入'],
       expense: ['设备购买', '维护费用', '物流费用', '其他支出'],
@@ -397,7 +418,7 @@ export function TransactionForm({ transactionId, orderId, itemId }: TransactionF
               <Label htmlFor="business_line">业务线 *</Label>
               <Select
                 value={formData.business_line}
-                onValueChange={(value: 'rental' | 'badminton' | 'youtube') =>
+                onValueChange={(value: BusinessLine) =>
                   setFormData({ ...formData, business_line: value, category: '' })
                 }
                 disabled={!!orderId || !!itemId}
@@ -409,6 +430,7 @@ export function TransactionForm({ transactionId, orderId, itemId }: TransactionF
                   <SelectItem value="rental">租赁业务</SelectItem>
                   <SelectItem value="badminton">羽毛球副业</SelectItem>
                   <SelectItem value="youtube">YouTube频道</SelectItem>
+                  <SelectItem value="wechat_video">微信视频号</SelectItem>
                 </SelectContent>
               </Select>
               {(orderId || itemId) && (

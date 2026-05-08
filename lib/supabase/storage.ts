@@ -28,7 +28,6 @@ export async function uploadSerialNumberImage(
     console.error('Supabase Storage upload error:', {
       message: uploadError.message,
       statusCode: uploadError.statusCode,
-      error: uploadError.error,
       usingServiceRole,
     })
     

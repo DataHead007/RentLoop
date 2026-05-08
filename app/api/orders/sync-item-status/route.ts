@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseServer as supabase } from '@/lib/supabase/server'
+import { apiError } from '@/lib/api/response'
 
 /**
- * 修复端点：同步所有待发货、进行中和已确认订单的资产状态
- * 用于修复历史数据或状态不一致的问题
+ * 修复端点：同步已发货（in_progress）订单的资产状态为已租出
+ * 仅处理 in_progress，待发货订单不占资产
  */
 export async function POST() {
   try {
-    // 获取所有待发货、进行中或已确认的订单（资产应为已租出）
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
       .select(`
@@ -20,7 +20,8 @@ export async function POST() {
           name
         )
       `)
-      .in('status', ['in_progress', 'confirmed'])
+      .eq('order_type', 'rental')
+      .eq('status', 'in_progress')
 
     if (ordersError) throw ordersError
 
@@ -127,9 +128,6 @@ export async function POST() {
     })
   } catch (error: any) {
     console.error('Error syncing item statuses:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to sync item statuses' },
-      { status: 500 }
-    )
+    return apiError('ORDER_ITEM_STATUS_SYNC_FAILED', error.message || 'Failed to sync item statuses', 500)
   }
 }

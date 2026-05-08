@@ -1,13 +1,22 @@
 import { TransactionForm } from '@/components/transactions/TransactionForm'
+import type { BusinessLine } from '@/lib/types/database'
 
-export default function NewTransactionPage({
+const BUSINESS_LINES: readonly BusinessLine[] = ['rental', 'badminton', 'youtube', 'wechat_video']
+
+export default async function NewTransactionPage({
   searchParams,
 }: {
-  searchParams: { itemId?: string; orderId?: string }
+  searchParams: Promise<{ itemId?: string; orderId?: string; businessLine?: string }>
 }) {
+  const { itemId, orderId, businessLine } = await searchParams
+  const defaultBusinessLine =
+    businessLine && (BUSINESS_LINES as readonly string[]).includes(businessLine)
+      ? (businessLine as BusinessLine)
+      : undefined
+
   return (
     <div className="container mx-auto py-8">
-      <TransactionForm itemId={searchParams?.itemId} orderId={searchParams?.orderId} />
+      <TransactionForm itemId={itemId} orderId={orderId} defaultBusinessLine={defaultBusinessLine} />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseServer as supabase } from '@/lib/supabase/server'
 import { findOrCreateCustomer, updateCustomerStats } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 // 解析客户信息的工具函数（与前端保持一致）
 function parseCustomerInfo(text: string): {
@@ -248,10 +249,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Error checking missing customers:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to check missing customers' },
-      { status: 500 }
-    )
+    return apiError('CUSTOMER_CHECK_MISSING_FAILED', error instanceof Error ? error.message : 'Failed to check missing customers', 500)
   }
 }
 
@@ -543,9 +541,6 @@ export async function POST() {
     })
   } catch (error) {
     console.error('Error fixing missing customers:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fix missing customers' },
-      { status: 500 }
-    )
+    return apiError('CUSTOMER_FIX_MISSING_FAILED', error instanceof Error ? error.message : 'Failed to fix missing customers', 500)
   }
 }

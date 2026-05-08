@@ -12,6 +12,7 @@ export interface Item {
   id: string
   category_id: string
   name: string
+  short_name: string | null
   brand: string | null
   model: string | null
   serial_number: string | null
@@ -43,10 +44,15 @@ export interface Customer {
   notes: string | null
   total_orders: number
   total_amount: number
+  /** 仅羽毛球订单：各单 total_amount（净值）之和与笔数；由 getCustomers 从订单表聚合 */
+  badminton_total_amount?: number
+  badminton_order_count?: number
   first_order_date: string | null
   last_order_date: string | null
   created_at: string
   updated_at: string
+  /** getCustomer 等接口展开，非 customers 表字段 */
+  orders?: Order[]
 }
 
 export type OrderType = 'rental' | 'badminton'
@@ -83,6 +89,8 @@ export interface Order {
   checkout_snapshot_url: string | null
   checkin_snapshot_url: string | null
   notes: string | null
+  /** 创建订单时客户端生成的幂等键；网络失败后重试应携带同一键，避免重复插入 */
+  idempotency_key?: string | null
   created_at: string
   updated_at: string
   // 羽毛球副业
@@ -166,7 +174,7 @@ export interface ShippingFee {
   updated_at: string
 }
 
-export type BusinessLine = 'rental' | 'badminton' | 'youtube'
+export type BusinessLine = 'rental' | 'badminton' | 'youtube' | 'wechat_video'
 
 export interface Transaction {
   id: string

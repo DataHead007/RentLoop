@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getOrder, updateOrder, createTransaction } from '@/lib/supabase/queries'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseServer as supabase } from '@/lib/supabase/server'
+import { apiError } from '@/lib/api/response'
 
 // 辅助函数：根据订单状态更新资产状态
 async function updateItemStatusesByOrderStatus(
@@ -13,12 +14,8 @@ async function updateItemStatusesByOrderStatus(
     return
   }
 
-  // 订单状态为待发货、进行中或已确认时，资产标记为已租出
-  // 包括：in_progress/confirmed 正向流转，以及 in_progress→pending 回退（回退发货但订单仍有效）
-  const shouldSetRented =
-    newStatus === 'in_progress' ||
-    newStatus === 'confirmed' ||
-    (newStatus === 'pending' && oldStatus === 'in_progress')
+  // 仅已发货（in_progress）时资产标记为已租出；待发货（pending/confirmed）不占资产，便于远期订单期间再接单
+  const shouldSetRented = newStatus === 'in_progress'
   if (shouldSetRented) {
     for (const orderItem of orderItems) {
       if (orderItem.item_id && orderItem.item_id.trim() !== '') {
@@ -37,8 +34,8 @@ async function updateItemStatusesByOrderStatus(
       }
     }
   }
-  // 订单完成、取消，或 confirmed→pending 回退时，资产恢复可用
-  else if (newStatus === 'completed' || newStatus === 'cancelled' || (newStatus === 'pending' && oldStatus === 'confirmed')) {
+  // 订单完成、取消，或回退到待发货时，资产恢复可用
+  else if (newStatus === 'completed' || newStatus === 'cancelled' || (newStatus === 'pending' && (oldStatus === 'confirmed' || oldStatus === 'in_progress'))) {
     for (const orderItem of orderItems) {
       if (orderItem.item_id && orderItem.item_id.trim() !== '') {
         try {
@@ -85,35 +82,32 @@ async function forceSyncOrderItemStatuses(orderId: string) {
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const order = await getOrder(params.id)
+    const { id } = await params
+    const order = await getOrder(id)
     if (!order) {
-      return NextResponse.json(
-        { error: 'Order not found' },
-        { status: 404 }
-      )
+      return apiError('NOT_FOUND', 'Order not found', 404)
     }
     return NextResponse.json(order)
   } catch (error) {
     console.error('Error fetching order:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch order' },
-      { status: 500 }
-    )
+    const message = error instanceof Error ? error.message : 'Failed to fetch order'
+    return apiError('ORDER_FETCH_FAILED', message, 500)
   }
 }
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const body = await request.json()
-    const oldOrder = await getOrder(params.id)
+    const oldOrder = await getOrder(id)
     if (!oldOrder) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      return apiError('NOT_FOUND', 'Order not found', 404)
     }
     const isBadminton = (oldOrder as any)?.order_type === 'badminton' || body.badminton_order_lines !== undefined
 
@@ -122,6 +116,7 @@ export async function PATCH(
         customer_name,
         customer_phone,
         customer_email,
+        customer_id: badmintonCustomerId,
         service_type,
         location,
         service_date,
@@ -153,17 +148,23 @@ export async function PATCH(
         notes: notes || null,
         status: status !== undefined ? status : oldOrder.status,
       }
+      if (Object.prototype.hasOwnProperty.call(body, 'customer_id')) {
+        updateData.customer_id =
+          typeof badmintonCustomerId === 'string' && badmintonCustomerId.trim() !== ''
+            ? badmintonCustomerId.trim()
+            : null
+      }
       if (service_type !== undefined) updateData.service_type = service_type
       if (location !== undefined) updateData.location = location
       if (service_date !== undefined) updateData.service_date = sd
       if (service_start_time !== undefined) updateData.service_start_time = service_start_time || null
       if (service_end_time !== undefined) updateData.service_end_time = service_end_time || null
-      await updateOrder(params.id, updateData)
+      await updateOrder(id, updateData)
 
-      await supabase.from('badminton_order_lines').delete().eq('order_id', params.id)
+      await supabase.from('badminton_order_lines').delete().eq('order_id', id)
       if (badminton_order_lines.length > 0) {
         const linesWithOrderId = badminton_order_lines.map((l: any) => ({
-          order_id: params.id,
+          order_id: id,
           line_type: l.line_type,
           category: l.category,
           amount: Math.abs(Number(l.amount)) || 0,
@@ -173,7 +174,7 @@ export async function PATCH(
         if (linesErr) throw linesErr
       }
 
-      const order = await getOrder(params.id)
+      const order = await getOrder(id)
       if (!order) throw new Error('Failed to retrieve updated order')
       
       // 如果订单已完成，同步更新交易记录
@@ -183,7 +184,7 @@ export async function PATCH(
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
           // 2. 根据新的 badminton_order_lines 重新生成交易记录
@@ -208,7 +209,7 @@ export async function PATCH(
           }
         } catch (transactionError) {
           console.error('[Orders API] Failed to sync transactions after badminton order lines update', {
-            orderId: params.id,
+            orderId: id,
             context: 'badminton_order_lines_update',
             error: transactionError instanceof Error ? transactionError.message : String(transactionError),
             stack: transactionError instanceof Error ? transactionError.stack : undefined,
@@ -238,11 +239,11 @@ export async function PATCH(
       if (body.service_start_time !== undefined) updateData.service_start_time = body.service_start_time
       if (body.service_end_time !== undefined) updateData.service_end_time = body.service_end_time
       if (Object.keys(updateData).length > 0) {
-        await updateOrder(params.id, updateData)
+        await updateOrder(id, updateData)
       }
 
       // 重新获取订单以获取最新的 badminton_order_lines
-      const order = await getOrder(params.id)
+      const order = await getOrder(id)
       if (!order) throw new Error('Failed to retrieve updated order')
 
       // 如果订单状态从"已完成"回退，删除自动生成的交易记录
@@ -251,10 +252,10 @@ export async function PATCH(
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
-          console.log(`Deleted auto-created transactions for order ${params.id} (badminton order status reverted from completed)`)
+          console.log(`Deleted auto-created transactions for order ${id} (badminton order status reverted from completed)`)
         } catch (transactionError) {
           console.error('Failed to delete transactions on status revert:', transactionError)
         }
@@ -267,7 +268,7 @@ export async function PATCH(
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
           // 2. 根据 badminton_order_lines 生成交易记录
@@ -292,7 +293,7 @@ export async function PATCH(
           }
         } catch (transactionError) {
           console.error('[Orders API] Failed to auto-create transactions for badminton order', {
-            orderId: params.id,
+            orderId: id,
             context: 'badminton_status_to_completed',
             error: transactionError instanceof Error ? transactionError.message : String(transactionError),
             stack: transactionError instanceof Error ? transactionError.stack : undefined,
@@ -334,7 +335,7 @@ export async function PATCH(
       }
 
       // 更新订单主记录
-      const updatedOrder = await updateOrder(params.id, {
+      const updatedOrder = await updateOrder(id, {
         customer_name,
         customer_phone: customer_phone || null,
         customer_email: customer_email || null,
@@ -361,7 +362,7 @@ export async function PATCH(
         await supabase
           .from('order_items')
           .delete()
-          .eq('order_id', params.id)
+          .eq('order_id', id)
         
         // 记录新的订单项资产ID
         const newItemIds = order_items
@@ -373,7 +374,7 @@ export async function PATCH(
         
         // 恢复被删除资产的状态为 available，并结束相关绑定
         if (removedItemIds.length > 0) {
-          console.log(`Restoring status for removed items from order ${params.id}:`, removedItemIds)
+          console.log(`Restoring status for removed items from order ${id}:`, removedItemIds)
           for (const itemId of removedItemIds) {
             try {
               // 结束该资产的绑定记录
@@ -404,7 +405,7 @@ export async function PATCH(
             .filter((item: any) => item.item_id && item.item_id.trim() !== '')
             .map((item: any) => ({
               ...item,
-              order_id: params.id,
+              order_id: id,
               item_id: item.item_id && item.item_id.trim() !== '' ? item.item_id : null,
               device_id: item.device_id && item.device_id.trim() !== '' ? item.device_id : null,
               account_binding_type: item.account_binding_type || null,
@@ -456,7 +457,7 @@ export async function PATCH(
                         binding_type: orderItem.account_binding_type,
                         bind_start_date: start_date || new Date().toISOString().split('T')[0],
                         bind_end_date: null,
-                        order_id: params.id,
+                        order_id: id,
                         order_item_id: orderItem.id,
                       })
                     } else if (isGameAccount && !orderItem.device_id) {
@@ -466,7 +467,7 @@ export async function PATCH(
                         binding_type: null,
                         bind_start_date: start_date || new Date().toISOString().split('T')[0],
                         bind_end_date: null,
-                        order_id: params.id,
+                        order_id: id,
                         order_item_id: orderItem.id,
                       })
                     }
@@ -489,12 +490,12 @@ export async function PATCH(
         await supabase
           .from('third_party_rentals')
           .delete()
-          .eq('order_id', params.id)
+          .eq('order_id', id)
         
         if (third_party_rentals.length > 0) {
           const rentalsWithOrderId = third_party_rentals.map((rental: any) => ({
             ...rental,
-            order_id: params.id
+            order_id: id
           }))
           
           const { error: rentalsError } = await supabase
@@ -510,12 +511,12 @@ export async function PATCH(
         await supabase
           .from('shipping_fees')
           .delete()
-          .eq('order_id', params.id)
+          .eq('order_id', id)
         
         if (shipping_fees.length > 0) {
           const feesWithOrderId = shipping_fees.map((fee: any) => ({
             ...fee,
-            order_id: params.id
+            order_id: id
           }))
           
           const { error: feesError } = await supabase
@@ -527,7 +528,7 @@ export async function PATCH(
       }
 
       // 重新获取完整的订单数据
-      const order = await getOrder(params.id)
+      const order = await getOrder(id)
       if (!order) throw new Error('Failed to retrieve updated order')
       
       // 无论订单状态是否变化，只要订单是进行中或已确认，都要检查并同步资产状态
@@ -539,7 +540,7 @@ export async function PATCH(
       if (currentOrderStatus === 'in_progress' || currentOrderStatus === 'confirmed' || currentOrderStatus === 'completed' || currentOrderStatus === 'cancelled') {
         if (order.order_items && order.order_items.length > 0) {
           const statusChanged = body.status !== undefined && body.status !== oldOrder?.status
-          console.log(`Ensuring item statuses are synced for order ${params.id} (status: ${currentOrderStatus}, itemsUpdated: ${orderItemsUpdated}, statusChanged: ${statusChanged})`)
+          console.log(`Ensuring item statuses are synced for order ${id} (status: ${currentOrderStatus}, itemsUpdated: ${orderItemsUpdated}, statusChanged: ${statusChanged})`)
           await updateItemStatusesByOrderStatus(
             order.order_items.map(item => ({
               item_id: item.item_id,
@@ -549,31 +550,18 @@ export async function PATCH(
             oldOrder?.status
           )
         } else {
-          console.warn(`Order ${params.id} has no order_items, cannot sync item statuses`)
+          console.warn(`Order ${id} has no order_items, cannot sync item statuses`)
         }
       } else if (body.status !== undefined && body.status !== oldOrder?.status) {
         // 即使状态不是上述几种，如果状态有变化，也要尝试同步（兼容未来可能的状态）
         if (order.order_items && order.order_items.length > 0) {
-          console.log(`Syncing item statuses for order ${params.id} due to status change: ${oldOrder?.status || 'N/A'} → ${body.status}`)
+          console.log(`Syncing item statuses for order ${id} due to status change: ${oldOrder?.status || 'N/A'} → ${body.status}`)
           await updateItemStatusesByOrderStatus(
             order.order_items.map(item => ({
               item_id: item.item_id,
               subtotal: item.subtotal || 0
             })),
             body.status,
-            oldOrder?.status
-          )
-        }
-      } else if (orderItemsUpdated && (currentOrderStatus === 'in_progress' || currentOrderStatus === 'confirmed')) {
-        // 如果只更新了订单项（没有状态变化），但订单是进行中或已确认，也要确保同步
-        if (order.order_items && order.order_items.length > 0) {
-          console.log(`Syncing item statuses for order ${params.id} after order items update (status: ${currentOrderStatus})`)
-          await updateItemStatusesByOrderStatus(
-            order.order_items.map(item => ({
-              item_id: item.item_id,
-              subtotal: item.subtotal || 0
-            })),
-            currentOrderStatus,
             oldOrder?.status
           )
         }
@@ -586,10 +574,10 @@ export async function PATCH(
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
-          console.log(`Deleted auto-created transactions for order ${params.id} (status reverted from completed)`)
+          console.log(`Deleted auto-created transactions for order ${id} (status reverted from completed)`)
         } catch (transactionError) {
           console.error('Failed to delete transactions on status revert:', transactionError)
         }
@@ -602,7 +590,7 @@ export async function PATCH(
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
           // 2. 为每个订单项创建收入交易（资产级别）。行总金额 = (net_amount ?? subtotal) * quantity
@@ -727,7 +715,7 @@ export async function PATCH(
           }
         } catch (transactionError) {
           console.error('[Orders API] Failed to auto-create transactions for rental order', {
-            orderId: params.id,
+            orderId: id,
             context: 'rental_status_to_completed',
             error: transactionError instanceof Error ? transactionError.message : String(transactionError),
             stack: transactionError instanceof Error ? transactionError.stack : undefined,
@@ -744,7 +732,7 @@ export async function PATCH(
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
           // 2. 重新生成交易记录（与 status→completed 逻辑一致：行总金额 = (net_amount??subtotal)*quantity）
@@ -846,7 +834,7 @@ export async function PATCH(
           }
         } catch (transactionError) {
           console.error('[Orders API] Failed to sync transactions after order items update', {
-            orderId: params.id,
+            orderId: id,
             context: 'order_items_update_completed',
             error: transactionError instanceof Error ? transactionError.message : String(transactionError),
             stack: transactionError instanceof Error ? transactionError.stack : undefined,
@@ -856,13 +844,13 @@ export async function PATCH(
 
       return NextResponse.json(order)
     } else {
-      const order = await updateOrder(params.id, body)
+      const order = await updateOrder(id, body)
       
       // 注意：本地缓存更新在客户端组件中处理
       
       // 强制重新加载订单以获取最新的 order_items
       // 因为 updateOrder 可能在某些情况下不返回完整的关联数据
-      const fullOrder = await getOrder(params.id)
+      const fullOrder = await getOrder(id)
       
       if (fullOrder && fullOrder.order_items && fullOrder.order_items.length > 0) {
         const currentOrderStatus = fullOrder.status
@@ -871,7 +859,7 @@ export async function PATCH(
         // 无论状态是否变化，只要订单是 in_progress、confirmed、completed 或 cancelled，都要同步资产状态
         // 这样可以确保即使没有状态变化，资产状态也会保持同步
         if (currentOrderStatus === 'in_progress' || currentOrderStatus === 'confirmed' || currentOrderStatus === 'completed' || currentOrderStatus === 'cancelled') {
-          console.log(`Ensuring item statuses are synced for order ${params.id} (status: ${currentOrderStatus}, statusChanged: ${statusChanged})`)
+          console.log(`Ensuring item statuses are synced for order ${id} (status: ${currentOrderStatus}, statusChanged: ${statusChanged})`)
           await updateItemStatusesByOrderStatus(
             fullOrder.order_items.map(item => ({
               item_id: item.item_id,
@@ -882,7 +870,7 @@ export async function PATCH(
           )
         } else if (statusChanged) {
           // 即使状态不是上述几种，如果状态有变化，也要尝试同步
-          console.log(`Syncing item statuses for order ${params.id} due to status change: ${oldOrder?.status || 'N/A'} → ${body.status}`)
+          console.log(`Syncing item statuses for order ${id} due to status change: ${oldOrder?.status || 'N/A'} → ${body.status}`)
           await updateItemStatusesByOrderStatus(
             fullOrder.order_items.map(item => ({
               item_id: item.item_id,
@@ -893,7 +881,7 @@ export async function PATCH(
           )
         } else if (currentOrderStatus === 'pending' && oldOrder?.status && oldOrder.status !== 'pending') {
           // 订单回退到待处理状态，恢复资产状态为可用
-          console.log(`Syncing item statuses for order ${params.id} reverted to pending from ${oldOrder.status}`)
+          console.log(`Syncing item statuses for order ${id} reverted to pending from ${oldOrder.status}`)
           await updateItemStatusesByOrderStatus(
             fullOrder.order_items.map(item => ({
               item_id: item.item_id,
@@ -904,7 +892,7 @@ export async function PATCH(
           )
         }
       } else {
-        console.warn(`Order ${params.id} has no order_items after update, cannot sync item statuses`)
+        console.warn(`Order ${id} has no order_items after update, cannot sync item statuses`)
       }
       
       // 如果订单状态从"已完成"回退，删除自动生成的交易记录
@@ -914,10 +902,10 @@ export async function PATCH(
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
-          console.log(`Deleted auto-created transactions for order ${params.id} (status reverted from completed)`)
+          console.log(`Deleted auto-created transactions for order ${id} (status reverted from completed)`)
         } catch (transactionError) {
           console.error('Failed to delete transactions on status revert:', transactionError)
         }
@@ -927,14 +915,14 @@ export async function PATCH(
       if (body.status === 'completed' && oldOrder?.status !== 'completed') {
         try {
           // 显式获取最新完整订单数据，确保使用包含所有关联数据的订单
-          const orderForTx = await getOrder(params.id)
-          if (!orderForTx) throw new Error(`Order ${params.id} not found for transaction creation`)
+          const orderForTx = await getOrder(id)
+          if (!orderForTx) throw new Error(`Order ${id} not found for transaction creation`)
           
           // 1. 先删除该订单的所有旧自动交易（支持状态回滚）
           await supabase
             .from('transactions')
             .delete()
-            .eq('order_id', params.id)
+            .eq('order_id', id)
             .eq('auto_created', true)
           
           // 2. 为每个订单项创建收入交易（资产级别）。行总金额 = (net_amount??subtotal)*quantity
@@ -1055,7 +1043,7 @@ export async function PATCH(
           }
         } catch (transactionError) {
           console.error('[Orders API] Failed to auto-create transactions for rental order (status-only update)', {
-            orderId: params.id,
+            orderId: id,
             context: 'rental_status_only_to_completed',
             error: transactionError instanceof Error ? transactionError.message : String(transactionError),
             stack: transactionError instanceof Error ? transactionError.stack : undefined,
@@ -1067,9 +1055,6 @@ export async function PATCH(
     }
   } catch (error: any) {
     console.error('Error updating order:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to update order' },
-      { status: 500 }
-    )
+    return apiError('ORDER_UPDATE_FAILED', error.message || 'Failed to update order', 500)
   }
 }

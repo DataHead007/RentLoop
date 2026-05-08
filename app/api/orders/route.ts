@@ -1,8 +1,22 @@
 import { NextResponse } from 'next/server'
-import { getOrders, createOrder, createBadmintonOrder, deleteOrder } from '@/lib/supabase/queries'
-import { supabase } from '@/lib/supabase/client'
+import {
+  getOrders,
+  createOrder,
+  createBadmintonOrder,
+  deleteOrder,
+  findOrderByIdempotencyKey,
+} from '@/lib/supabase/queries'
+import { supabaseServer } from '@/lib/supabase/server'
 import { DataConsistencyLogger } from '@/lib/utils/logger'
 import type { OrderItem, ThirdPartyRental, ShippingFee } from '@/lib/types/database'
+import { apiError } from '@/lib/api/response'
+
+function normalizeIdempotencyKey(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const k = raw.trim()
+  if (k.length < 8 || k.length > 128) return null
+  return k
+}
 
 export async function GET(request: Request) {
   const startTime = Date.now()
@@ -46,8 +60,8 @@ export async function GET(request: Request) {
     
     return NextResponse.json(orders, {
       headers: {
-        // 订单数据变化较频繁，使用较短的缓存时间：10秒内使用缓存，30秒内允许使用过期缓存
-        'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30',
+        // 避免浏览器/CDN 缓存订单列表，否则删除后刷新仍可能看到旧数据
+        'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
       },
     })
   } catch (error) {
@@ -56,16 +70,31 @@ export async function GET(request: Request) {
       stack: error instanceof Error ? error.stack : undefined,
       time: `${Date.now() - startTime}ms`,
     })
-    return NextResponse.json(
-      { error: 'Failed to fetch orders' },
-      { status: 500 }
-    )
+    return apiError('ORDERS_FETCH_FAILED', 'Failed to fetch orders', 500)
   }
 }
 
 export async function POST(request: Request) {
+  let body: Record<string, unknown>
   try {
-    const body = await request.json()
+    body = await request.json()
+  } catch {
+    return apiError('INVALID_REQUEST', 'Invalid JSON body', 400)
+  }
+
+  const idempotencyKey = normalizeIdempotencyKey(body.idempotency_key)
+  if (idempotencyKey) {
+    try {
+      const existing = await findOrderByIdempotencyKey(idempotencyKey)
+      if (existing) {
+        return NextResponse.json(existing, { status: 200 })
+      }
+    } catch (e) {
+      console.error('[Orders POST] idempotency lookup failed:', e)
+    }
+  }
+
+  try {
     const orderType = (body.order_type as 'rental' | 'badminton') || 'rental'
 
     if (orderType === 'badminton') {
@@ -73,6 +102,7 @@ export async function POST(request: Request) {
         customer_name,
         customer_phone,
         customer_email,
+        customer_id: badmintonCustomerId,
         service_type,
         location,
         service_date,
@@ -91,16 +121,19 @@ export async function POST(request: Request) {
         !Array.isArray(badminton_order_lines) ||
         badminton_order_lines.length === 0
       ) {
-        return NextResponse.json(
-          { error: '羽毛球订单：客户名称、服务类型、地点、服务日期和至少一笔收支明细是必需的' },
-          { status: 400 }
-        )
+        return apiError('INVALID_REQUEST', '羽毛球订单：客户名称、服务类型、地点、服务日期和至少一笔收支明细是必需的', 400)
       }
+      const explicitCustomerId =
+        typeof badmintonCustomerId === 'string' && badmintonCustomerId.trim() !== ''
+          ? badmintonCustomerId.trim()
+          : undefined
+
       const order = await createBadmintonOrder(
         {
           customer_name,
           customer_phone: customer_phone || null,
           customer_email: customer_email || null,
+          ...(explicitCustomerId ? { customer_id: explicitCustomerId } : {}),
           service_type,
           location,
           service_date,
@@ -108,6 +141,7 @@ export async function POST(request: Request) {
           service_end_time: service_end_time || null,
           status: status || 'pending',
           notes: notes || null,
+          ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
         },
         badminton_order_lines
       )
@@ -133,10 +167,7 @@ export async function POST(request: Request) {
     } = body
 
     if (!customer_name || !start_date || !end_date || !order_items || order_items.length === 0) {
-      return NextResponse.json(
-        { error: '客户名称、起止日期和至少一个订单项是必需的' },
-        { status: 400 }
-      )
+      return apiError('INVALID_REQUEST', '客户名称、起止日期和至少一个订单项是必需的', 400)
     }
 
     // 计算总金额和押金
@@ -159,12 +190,7 @@ export async function POST(request: Request) {
       order_items.forEach((item: Omit<OrderItem, 'id' | 'order_id' | 'created_at' | 'updated_at' | 'item'>) => {
         calculatedDeposit += (item.deposit || 0) * (item.quantity || 1)
       })
-      
-      if (third_party_rentals) {
-        third_party_rentals.forEach((rental: ThirdPartyRental) => {
-          calculatedDeposit += rental.deposit || 0
-        })
-      }
+      // 第三方租赁押金是付给供应商的，不计入订单 total_deposit（客户押金）
     }
     
     // 3. 物流费用：只在未提供时从 shipping_fees 计算（区分"未提供"和"值为 0"）
@@ -184,7 +210,7 @@ export async function POST(request: Request) {
       .filter((item: any) => item.item_id && item.item_id.trim() !== '')
       .map((item: any) => item.item_id)
     if (itemIdsToCheck.length > 0 && !allowOverlap) {
-      const { data: overlappingOrders } = await supabase
+      const { data: overlappingOrders } = await supabaseServer
         .from('orders')
         .select('id')
         .eq('order_type', 'rental')
@@ -193,22 +219,19 @@ export async function POST(request: Request) {
         .gte('end_date', reqStart)
       const orderIds = (overlappingOrders || []).map((o: { id: string }) => o.id)
       if (orderIds.length > 0) {
-        const { data: occupiedRows } = await supabase
+        const { data: occupiedRows } = await supabaseServer
           .from('order_items')
           .select('item_id')
           .in('order_id', orderIds)
           .in('item_id', itemIdsToCheck)
         const occupiedItemIds = new Set((occupiedRows || []).map((r: { item_id: string }) => r.item_id))
         if (occupiedItemIds.size > 0) {
-          const { data: itemNames } = await supabase
+          const { data: itemNames } = await supabaseServer
             .from('items')
             .select('id, name')
             .in('id', Array.from(occupiedItemIds))
           const names = (itemNames || []).map((i: { name: string }) => i.name).join('、')
-          return NextResponse.json(
-            { error: `资产「${names}」在所选日期已被预定，请选择其他日期或设备` },
-            { status: 400 }
-          )
+          return apiError('ITEM_DATE_CONFLICT', `资产「${names}」在所选日期已被预定，请选择其他日期或设备`, 400)
         }
       }
     }
@@ -216,6 +239,7 @@ export async function POST(request: Request) {
     // 创建订单
     const order = await createOrder(
       {
+        order_type: 'rental',
         customer_name,
         customer_phone: customer_phone || null,
         customer_email: customer_email || null,
@@ -231,16 +255,16 @@ export async function POST(request: Request) {
         checkout_snapshot_url: null,
         checkin_snapshot_url: null,
         notes: notes || null,
+        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
       },
       order_items,
       third_party_rentals,
       shipping_fees
     )
     
-    // 根据订单状态自动更新资产状态（仅发货后 in_progress/confirmed 才标记为已租出，pending 保持可用）
+    // 仅已发货（in_progress）时更新资产为已租出，待发货（pending/confirmed）不占资产
     const orderStatus = status || 'pending'
-    if (orderStatus === 'in_progress' || orderStatus === 'confirmed') {
-      // 订单进行中或已确认时，更新资产状态为已租出
+    if (orderStatus === 'in_progress') {
       for (const orderItem of order_items) {
         if (orderItem.item_id && orderItem.item_id.trim() !== '') {
           // 根据是否有租金决定状态：有租金 → rented，无租金 → in_use
@@ -248,7 +272,7 @@ export async function POST(request: Request) {
           const newStatus = hasRent ? 'rented' : 'in_use'
           
           try {
-            const { error: updateError } = await supabase
+            const { error: updateError } = await supabaseServer
               .from('items')
               .update({ status: newStatus })
               .eq('id', orderItem.item_id)
@@ -268,11 +292,18 @@ export async function POST(request: Request) {
     
     return NextResponse.json(order, { status: 201 })
   } catch (error: any) {
+    if (error?.code === '23505' && idempotencyKey) {
+      try {
+        const existing = await findOrderByIdempotencyKey(idempotencyKey)
+        if (existing) {
+          return NextResponse.json(existing, { status: 200 })
+        }
+      } catch (e) {
+        console.error('[Orders POST] idempotency retry lookup failed:', e)
+      }
+    }
     console.error('Error creating order:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to create order' },
-      { status: 500 }
-    )
+    return apiError('ORDER_CREATE_FAILED', error.message || 'Failed to create order', 500)
   }
 }
 
@@ -282,21 +313,28 @@ export async function DELETE(request: Request) {
     const id = searchParams.get('id')
     
     if (!id) {
-      return NextResponse.json(
-        { error: 'Order ID is required' },
-        { status: 400 }
-      )
+      return apiError('INVALID_REQUEST', 'Order ID is required', 400)
     }
     
     await deleteOrder(id)
-    
+
     // 注意：本地缓存删除在客户端组件中处理
     return NextResponse.json({ success: true })
-  } catch (error) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : ''
+    const extCode =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: string }).code)
+        : ''
+    if (msg === 'ORDER_DELETE_NO_ROWS' || extCode === 'ORDER_DELETE_NO_ROWS') {
+      console.error('[Orders DELETE] 0 rows deleted (likely RLS blocks DELETE for anon key)', { id })
+      return apiError(
+        'ORDER_DELETE_FORBIDDEN',
+        '删除未生效：数据库没有删除任何行。请在 .env.local 配置 SUPABASE_SERVICE_ROLE_KEY（仅服务端），或在 Supabase 为 orders 表添加允许删除的 RLS 策略。',
+        403
+      )
+    }
     console.error('Error deleting order:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete order' },
-      { status: 500 }
-    )
+    return apiError('ORDER_DELETE_FAILED', error instanceof Error ? error.message : 'Failed to delete order', 500)
   }
 }

@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import useSWR, { useSWRConfig } from 'swr'
+import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
@@ -15,20 +17,35 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw } from 'lucide-react'
+import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp, MapPin } from 'lucide-react'
 import type { Order } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd, getDateRangeForPreset } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
-import { PerformanceMonitor } from '@/lib/utils/performance'
+import { getSiliconflowApiKey } from '@/lib/settings/storageKeys'
 import { ShippingDialog } from './ShippingDialog'
+import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
+
+type ShipSuggestion = {
+  recommendShipBy: string
+  suggestedExpress: string
+  reason?: string
+  distanceCategory?: string
+  sfDays?: number
+  standardDays?: number
+}
 
 type OrderTypeTab = 'all' | 'rental' | 'badminton'
-type DatePreset = 'all' | 'week' | 'month' | 'year'
+type DatePreset = 'all' | 'week' | 'month' | 'last_month' | 'next_month' | 'year'
 
-export function OrderList() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
+export type OrderListModule = 'hub' | 'rental' | 'badminton'
+
+type OrderListProps = {
+  /** hub：全部/租赁/羽毛球可切换；rental/badminton：仅该模块列表 */
+  module?: OrderListModule
+}
+
+export function OrderList({ module = 'hub' }: OrderListProps) {
   const [orderTypeTab, setOrderTypeTab] = useState<OrderTypeTab>('all')
   const [datePreset, setDatePreset] = useState<DatePreset>('all')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -37,6 +54,38 @@ export function OrderList() {
   const [shippingDialogOrder, setShippingDialogOrder] = useState<Order | null>(null)
   const [quickCompleteOrder, setQuickCompleteOrder] = useState<Order | null>(null)
   const [quickCompleting, setQuickCompleting] = useState(false)
+  const [rollbackOrder, setRollbackOrder] = useState<Order | null>(null)
+  const [rollingBack, setRollingBack] = useState(false)
+  // AI 推荐发货：订单 ID -> 推荐结果（在列表直接展示）
+  const [shipSuggestions, setShipSuggestions] = useState<Record<string, ShipSuggestion>>({})
+  const [shipSuggestionLoadingId, setShipSuggestionLoadingId] = useState<string | null>(null)
+
+  const { mutate: globalMutate } = useSWRConfig()
+
+  const effectiveOrderTypeTab: OrderTypeTab =
+    module === 'rental' ? 'rental' : module === 'badminton' ? 'badminton' : orderTypeTab
+
+  const newOrderHref =
+    module === 'rental' ? '/rental/orders/new' : module === 'badminton' ? '/badminton/orders/new' : '/orders/new'
+
+  const ordersKey = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set('orderType', effectiveOrderTypeTab)
+    if (datePreset !== 'all') {
+      const range = getDateRangeForPreset(datePreset)
+      params.set('startDate', range.startDate)
+      params.set('endDate', range.endDate)
+    }
+    return `/api/orders?${params.toString()}`
+  }, [effectiveOrderTypeTab, datePreset])
+
+  const {
+    data: orders = [],
+    isLoading: loading,
+    mutate: mutateOrders,
+  } = useSWR<Order[]>(ordersKey, (key) => apiFetch<Order[]>(key), {
+    keepPreviousData: true,
+  })
 
   // 根据品类返回对应的图标
   const getCategoryIcon = (categoryName: string | undefined | null) => {
@@ -88,27 +137,53 @@ export function OrderList() {
     return <Package className="h-4 w-4 text-gray-500" />
   }
 
-  // 对订单进行排序：未完成的在前，已完成的在后，各按创建时间降序
+  // 对订单进行排序：
+  // 1) 待发货（pending/confirmed）最优先
+  // 2) 进行中（in_progress）其次：按租赁到期日（end_date）升序，越早到期越靠前，便于催还
+  // 3) 已完成/已取消最后
+  // 待发货组内按创建时间倒序；已完成组内按更新时间倒序
   const sortedOrders = useMemo(() => {
-    const activeOrders = orders.filter(o => 
-      o.status !== 'completed' && o.status !== 'cancelled'
+    const waitingShipmentOrders = orders.filter(
+      (o) => o.status === 'pending' || o.status === 'confirmed'
     )
-    const completedOrders = orders.filter(o => 
-      o.status === 'completed' || o.status === 'cancelled'
+    const inProgressOrders = orders.filter((o) => o.status === 'in_progress')
+    const completedOrders = orders.filter(
+      (o) => o.status === 'completed' || o.status === 'cancelled'
     )
-    
-    // 对每组按创建时间降序排序
-    const sortByCreatedAt = (a: Order, b: Order) => {
+
+    const sortByCreatedAtDesc = (a: Order, b: Order) => {
       const timeA = new Date(a.created_at).getTime()
       const timeB = new Date(b.created_at).getTime()
-      return timeB - timeA // 降序：新的在前
+      return timeB - timeA
     }
-    
-    activeOrders.sort(sortByCreatedAt)
-    completedOrders.sort(sortByCreatedAt)
-    
-    // 未完成的在前，已完成的在后
-    return [...activeOrders, ...completedOrders]
+
+    const sortByUpdatedAtDesc = (a: Order, b: Order) => {
+      const timeA = new Date(a.updated_at).getTime()
+      const timeB = new Date(b.updated_at).getTime()
+      return timeB - timeA
+    }
+
+    /** 待收货：租赁用 end_date；羽毛球用 service_date；无日期排最后 */
+    const sortInProgressByReturnDateAsc = (a: Order, b: Order) => {
+      const endKey = (o: Order) => {
+        const raw =
+          o.order_type === 'badminton'
+            ? (o.service_date ?? o.end_date ?? '')
+            : (o.end_date ?? '')
+        const day = String(raw).split('T')[0]
+        const t = new Date(day).getTime()
+        return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY
+      }
+      const diff = endKey(a) - endKey(b)
+      if (diff !== 0) return diff
+      return sortByCreatedAtDesc(a, b)
+    }
+
+    waitingShipmentOrders.sort(sortByCreatedAtDesc)
+    inProgressOrders.sort(sortInProgressByReturnDateAsc)
+    completedOrders.sort(sortByUpdatedAtDesc)
+
+    return [...waitingShipmentOrders, ...inProgressOrders, ...completedOrders]
   }, [orders])
 
   // 计算统计信息 - 优化版本，减少多次 filter
@@ -120,8 +195,9 @@ export function OrderList() {
     let inProgressAmount = 0
     let completedAmount = 0
     let cancelledAmount = 0
-    
-    // 使用 reduce 一次遍历完成所有统计，而不是多次 filter
+    let totalCost = 0  // 物流 + 第三方租赁等成本
+    let totalIncome = 0    // 订单金额视为收入
+
     const statusCounts = {
       pending: 0,
       confirmed: 0,
@@ -129,26 +205,33 @@ export function OrderList() {
       completed: 0,
       cancelled: 0,
     }
-    
+
     orders.forEach(order => {
       const amount = order.total_amount || 0
       const deposit = order.total_deposit || 0
       const status = order.status
-      
+
       totalAmount += amount
-      
-      // 押金统计：只统计未退还的押金（进行中+已确认）
-      // 已完成和已取消的订单押金视为已退还
+      totalIncome += amount
+
+      const shipping = Number(order.total_shipping_cost) || 0
+      // 利润成本：第三方只计实际租赁成本；付供应商押金可退，不计入利润
+      const thirdPartyCost = (order.third_party_rentals || []).reduce(
+        (sum, r) => sum + (r.rental_cost ?? 0),
+        0
+      )
+      totalCost += shipping + thirdPartyCost
+
       if (status === 'in_progress' || status === 'confirmed') {
         totalDeposit += deposit
       } else if (status === 'completed' || status === 'cancelled') {
         returnedDeposit += deposit
       }
-      
+
       if (statusCounts.hasOwnProperty(status)) {
         statusCounts[status as keyof typeof statusCounts]++
       }
-      
+
       if (status === 'pending' || status === 'confirmed') {
         pendingAmount += amount
       } else if (status === 'in_progress') {
@@ -160,6 +243,8 @@ export function OrderList() {
       }
     })
 
+    const profit = totalIncome - totalCost
+
     return {
       totalAmount,
       totalDeposit,
@@ -170,40 +255,16 @@ export function OrderList() {
       completedAmount,
       cancelledAmount,
       totalOrders: orders.length,
+      totalIncome,
+      totalCost,
+      profit,
     }
   }, [orders])
-
-  const loadOrders = useCallback(async () => {
-    try {
-      setLoading(true)
-      const { getOrdersCached } = await import('@/lib/supabase/cachedQueries')
-      const startTime = performance.now()
-      const ot = orderTypeTab === 'all' ? undefined : orderTypeTab
-      const range = datePreset === 'all' ? undefined : getDateRangeForPreset(datePreset)
-      const data = await getOrdersCached(range?.startDate, range?.endDate, ot)
-      PerformanceMonitor.record('api:orders:list', performance.now() - startTime)
-      setOrders(data)
-    } catch (error) {
-      console.error('Failed to load orders:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [orderTypeTab, datePreset])
-
-  useEffect(() => {
-    loadOrders()
-  }, [loadOrders])
 
   // 监听订单更新事件，强制同步并刷新列表（如从订单详情返回、跨标签页更新等）
   useEffect(() => {
     const handleOrderUpdated = async () => {
-      try {
-        const { forceSync } = await import('@/lib/supabase/cachedQueries')
-        await forceSync('orders')
-        await loadOrders()
-      } catch (err) {
-        console.error('Failed to refresh orders on orderUpdated:', err)
-      }
+      await mutateOrders()
     }
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'orderUpdated') handleOrderUpdated()
@@ -214,85 +275,166 @@ export function OrderList() {
       window.removeEventListener('orderUpdated', handleOrderUpdated)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [loadOrders])
+  }, [mutateOrders])
+
+  const toastError = useCallback((err: unknown, fallback: string) => {
+    const message = err instanceof ApiFetchError ? err.message : err instanceof Error ? err.message : fallback
+    const code = err instanceof ApiFetchError ? err.code : undefined
+    toast.error(message, code ? { description: code } : undefined)
+  }, [])
+
+  const revalidateDashboards = useCallback(async () => {
+    // 交易统计、资产统计等看板：静默刷新（不影响当前列表交互）
+    await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/transactions/stats'))
+    await globalMutate((key) => typeof key === 'string' && key.startsWith('/api/items/assets-value'))
+  }, [globalMutate])
 
   const handleDelete = useCallback(async () => {
     if (!orderToDelete) return
 
     setDeleting(true)
     try {
-      const response = await fetch(`/api/orders?id=${orderToDelete.id}`, {
-        method: 'DELETE',
-      })
+      await mutateOrders(
+        async (current) => {
+          await apiFetch(`/api/orders?id=${orderToDelete.id}`, {
+            method: 'DELETE',
+          })
+          return (current || []).filter((o) => o.id !== orderToDelete.id)
+        },
+        {
+          optimisticData: (current) => (current || []).filter((o) => o.id !== orderToDelete.id),
+          rollbackOnError: true,
+          revalidate: true,
+          populateCache: true,
+        }
+      )
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || '删除失败')
-      }
-
-      // 从本地缓存删除
-      const { deleteFromCache } = await import('@/lib/supabase/cachedQueries')
-      await deleteFromCache('orders', orderToDelete.id).catch(console.error)
-
-      await loadOrders()
       setDeleteDialogOpen(false)
       setOrderToDelete(null)
-      
-      // 触发自定义事件，通知其他页面刷新统计数据
+
+      await revalidateDashboards()
+
+      // 通知其他页面/标签页刷新
       window.dispatchEvent(new CustomEvent('orderUpdated'))
-      // 同时使用 localStorage 通知其他标签页
       localStorage.setItem('orderUpdated', Date.now().toString())
     } catch (error) {
       console.error('Failed to delete order:', error)
-      alert(error instanceof Error ? error.message : '删除失败，请重试')
+      toastError(error, '删除失败，请重试')
     } finally {
       setDeleting(false)
     }
-  }, [orderToDelete, loadOrders])
+  }, [orderToDelete, mutateOrders, toastError, revalidateDashboards])
+
+  const patchOrderStatus = useCallback(
+    async (orderId: string, status: string) => {
+      await apiFetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+    },
+    []
+  )
 
   const handleQuickComplete = useCallback(async () => {
     if (!quickCompleteOrder) return
     setQuickCompleting(true)
     try {
-      const response = await fetch(`/api/orders/${quickCompleteOrder.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'completed' }),
-      })
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.error || '收货失败')
-      }
-      await loadOrders()
+      await mutateOrders(
+        async (current) => {
+          await patchOrderStatus(quickCompleteOrder.id, 'completed')
+          return (current || []).map((o) => (o.id === quickCompleteOrder.id ? ({ ...o, status: 'completed' } as Order) : o))
+        },
+        {
+          optimisticData: (current) =>
+            (current || []).map((o) => (o.id === quickCompleteOrder.id ? ({ ...o, status: 'completed' } as Order) : o)),
+          rollbackOnError: true,
+          revalidate: true,
+          populateCache: true,
+        }
+      )
       setQuickCompleteOrder(null)
-      window.dispatchEvent(new CustomEvent('orderUpdated'))
-      localStorage.setItem('orderUpdated', Date.now().toString())
     } catch (error) {
       console.error('Quick complete failed:', error)
-      alert(error instanceof Error ? error.message : '收货失败，请重试')
+      toastError(error, '收货失败，请重试')
     } finally {
       setQuickCompleting(false)
+      await revalidateDashboards()
+      window.dispatchEvent(new CustomEvent('orderUpdated'))
+      localStorage.setItem('orderUpdated', Date.now().toString())
     }
-  }, [quickCompleteOrder, loadOrders])
+  }, [quickCompleteOrder, mutateOrders, patchOrderStatus, toastError, revalidateDashboards])
+
+  const handleRollback = useCallback(async () => {
+    if (!rollbackOrder) return
+    setRollingBack(true)
+    try {
+      await mutateOrders(
+        async (current) => {
+          await patchOrderStatus(rollbackOrder.id, 'in_progress')
+          return (current || []).map((o) => (o.id === rollbackOrder.id ? ({ ...o, status: 'in_progress' } as Order) : o))
+        },
+        {
+          optimisticData: (current) =>
+            (current || []).map((o) => (o.id === rollbackOrder.id ? ({ ...o, status: 'in_progress' } as Order) : o)),
+          rollbackOnError: true,
+          revalidate: true,
+          populateCache: true,
+        }
+      )
+      setRollbackOrder(null)
+    } catch (error) {
+      console.error('Rollback failed:', error)
+      toastError(error, '回退失败，请重试')
+    } finally {
+      setRollingBack(false)
+      await revalidateDashboards()
+      window.dispatchEvent(new CustomEvent('orderUpdated'))
+      localStorage.setItem('orderUpdated', Date.now().toString())
+    }
+  }, [rollbackOrder, mutateOrders, patchOrderStatus, toastError, revalidateDashboards])
 
   const handleShippingSuccess = useCallback(async () => {
     setShippingDialogOrder(null)
+    await mutateOrders()
+    await revalidateDashboards()
+    window.dispatchEvent(new CustomEvent('orderUpdated'))
+    localStorage.setItem('orderUpdated', Date.now().toString())
+  }, [mutateOrders, revalidateDashboards])
+
+  const fetchShipSuggestion = useCallback(async (order: Order) => {
+    const address = order.customer_address?.trim()
+    if (!address) return
+    setShipSuggestionLoadingId(order.id)
     try {
-      const { forceSync } = await import('@/lib/supabase/cachedQueries')
-      await forceSync('orders')
-      await loadOrders()
+      const apiKey = getSiliconflowApiKey()
+      const res = await fetch('/api/ai/suggest-ship-date', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-SiliconFlow-Api-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({
+          origin: '上海市',
+          destinationAddress: address,
+          startDate: order.start_date,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '获取推荐失败')
+      setShipSuggestions((prev) => ({ ...prev, [order.id]: data }))
+    } catch (e) {
+      toastError(e, '获取推荐失败')
     } finally {
-      window.dispatchEvent(new CustomEvent('orderUpdated'))
-      localStorage.setItem('orderUpdated', Date.now().toString())
+      setShipSuggestionLoadingId(null)
     }
-  }, [loadOrders])
+  }, [toastError])
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'secondary'
       case 'confirmed':
-        return 'default'
+        return 'secondary'
       case 'in_progress':
         return 'default'
       case 'completed':
@@ -304,15 +446,60 @@ export function OrderList() {
     }
   }
 
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
+  const getStatusLabel = (status: string, isBadminton = false) => {
+    if (isBadminton) {
+      const badmintonLabels: Record<string, string> = {
+        pending: '待上课',
+        confirmed: '待上课', // 兼容历史订单
+        in_progress: '进行中',
+        completed: '已完成',
+        cancelled: '已取消',
+      }
+      return badmintonLabels[status] || status
+    }
+
+    const rentalLabels: Record<string, string> = {
       pending: '待发货',
       confirmed: '待发货', // 兼容历史订单
-      in_progress: '进行中',
+      in_progress: '待收货',
       completed: '已完成',
       cancelled: '已取消',
     }
-    return labels[status] || status
+    return rentalLabels[status] || status
+  }
+
+  const isBadmintonOnlyView = effectiveOrderTypeTab === 'badminton'
+
+  // 整行背景色：按状态区分（颜色更明显）
+  const getRowBackgroundClass = (status: string, isUrgent: boolean) => {
+    // 悬停不改变背景，仅用左侧主色边框提示当前行
+    const hoverHint = 'border-l-4 border-l-transparent hover:border-l-primary/80'
+    if (isUrgent) return 'bg-orange-200/90 hover:!bg-orange-200/90 ' + hoverHint
+    switch (status) {
+      case 'pending':
+      case 'confirmed':
+        return 'bg-blue-100 hover:!bg-blue-100 ' + hoverHint
+      case 'in_progress':
+        return 'bg-amber-100 hover:!bg-amber-100 ' + hoverHint
+      case 'completed':
+        return 'bg-green-100 hover:!bg-green-100 ' + hoverHint
+      case 'cancelled':
+        return 'bg-slate-200/80 hover:!bg-slate-200/80 ' + hoverHint
+      default:
+        return hoverHint
+    }
+  }
+
+  const getStatusBadgeClassName = (status: string) => {
+    switch (status) {
+      case 'pending':
+      case 'confirmed':
+        return 'bg-blue-200 text-blue-900 border-blue-300'
+      case 'in_progress':
+        return 'bg-amber-200 text-amber-900 border-amber-300'
+      default:
+        return ''
+    }
   }
 
   if (loading) {
@@ -329,27 +516,59 @@ export function OrderList() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">订单管理</h2>
-          <p className="text-muted-foreground">租赁订单与羽毛球副业订单</p>
+          <h2 className="text-3xl font-bold tracking-tight">
+            {module === 'rental' ? '租赁订单' : module === 'badminton' ? '羽毛球副业订单' : '全部订单'}
+          </h2>
+          <p className="text-muted-foreground">
+            {module === 'rental'
+              ? '设备租赁、游戏账号等'
+              : module === 'badminton'
+                ? '教学、陪打、比赛、活动'
+                : '租赁与羽毛球订单汇总；日常可从导航进入各业务模块'}
+          </p>
+          {module === 'rental' && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              <Link href="/badminton/orders" className="underline underline-offset-2 hover:text-foreground">
+                羽毛球订单
+              </Link>
+              <span className="mx-2">·</span>
+              <Link href="/orders" className="underline underline-offset-2 hover:text-foreground">
+                全部订单
+              </Link>
+            </p>
+          )}
+          {module === 'badminton' && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              <Link href="/rental/orders" className="underline underline-offset-2 hover:text-foreground">
+                租赁订单
+              </Link>
+              <span className="mx-2">·</span>
+              <Link href="/orders" className="underline underline-offset-2 hover:text-foreground">
+                全部订单
+              </Link>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border bg-muted/50 p-0.5">
-            {(['all', 'rental', 'badminton'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setOrderTypeTab(tab)}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  orderTypeTab === tab ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {tab === 'all' ? '全部' : tab === 'rental' ? '租赁' : '羽毛球'}
-              </button>
-            ))}
-          </div>
+          {module === 'hub' && (
+            <div className="flex rounded-lg border bg-muted/50 p-0.5">
+              {(['all', 'rental', 'badminton'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setOrderTypeTab(tab)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                    orderTypeTab === tab ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {tab === 'all' ? '全部' : tab === 'rental' ? '租赁' : '羽毛球'}
+                </button>
+              ))}
+            </div>
+          )}
           <Button asChild>
-            <Link href="/orders/new">
+            <Link href={newOrderHref}>
               <Plus className="mr-2 h-4 w-4" />
               新建订单
             </Link>
@@ -361,7 +580,7 @@ export function OrderList() {
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">时间范围：</span>
         <div className="flex rounded-lg border bg-muted/50 p-0.5">
-          {(['all', 'week', 'month', 'year'] as const).map((preset) => (
+          {(['all', 'week', 'month', 'last_month', 'next_month', 'year'] as const).map((preset) => (
             <button
               key={preset}
               type="button"
@@ -371,7 +590,17 @@ export function OrderList() {
                 datePreset === preset ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              {preset === 'all' ? '全部' : preset === 'week' ? '本周' : preset === 'month' ? '本月' : '本年'}
+              {preset === 'all'
+                ? '全部'
+                : preset === 'week'
+                  ? '本周'
+                  : preset === 'month'
+                    ? '本月'
+                    : preset === 'last_month'
+                      ? '上月'
+                      : preset === 'next_month'
+                        ? '下月'
+                        : '本年'}
             </button>
           ))}
         </div>
@@ -399,7 +628,7 @@ export function OrderList() {
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(stats.totalDeposit)}</div>
               <p className="text-xs text-muted-foreground">
-                进行中 + 已确认订单押金（{stats.statusCounts.in_progress + stats.statusCounts.confirmed} 个订单）
+                待发货 + 待收货订单押金（{stats.statusCounts.in_progress + stats.statusCounts.confirmed} 个订单）
               </p>
             </CardContent>
           </Card>
@@ -422,13 +651,13 @@ export function OrderList() {
           {(stats.pendingAmount > 0 || stats.statusCounts.pending + stats.statusCounts.confirmed > 0) && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">待确认/待发货订单金额</CardTitle>
-                <Package className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">待发货订单金额</CardTitle>
+                <Truck className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatCurrency(stats.pendingAmount)}</div>
                 <p className="text-xs text-muted-foreground">
-                  待发货 + 已确认（{stats.statusCounts.pending + stats.statusCounts.confirmed} 个订单）
+                  待发货（{stats.statusCounts.pending + stats.statusCounts.confirmed} 个订单）
                 </p>
               </CardContent>
             </Card>
@@ -436,13 +665,13 @@ export function OrderList() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">进行中订单金额</CardTitle>
+              <CardTitle className="text-sm font-medium">待收货订单金额</CardTitle>
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(stats.inProgressAmount)}</div>
               <p className="text-xs text-muted-foreground">
-                进行中 {stats.statusCounts.in_progress} 个订单
+                待收货（{stats.statusCounts.in_progress} 个订单）
               </p>
             </CardContent>
           </Card>
@@ -456,6 +685,21 @@ export function OrderList() {
               <div className="text-2xl font-bold">{formatCurrency(stats.completedAmount)}</div>
               <p className="text-xs text-muted-foreground">
                 已完成 {stats.statusCounts.completed} 个订单
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">利润（收入－成本）</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className={cn('text-2xl font-bold', stats.profit >= 0 ? 'text-green-600' : 'text-red-600')}>
+                {formatCurrency(stats.profit)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                收入 {formatCurrency(stats.totalIncome)} － 成本（物流+第三方转租，不含可退押金）{formatCurrency(stats.totalCost)}
               </p>
             </CardContent>
           </Card>
@@ -487,7 +731,7 @@ export function OrderList() {
                 <p className="text-muted-foreground">开始创建你的第一个订单吧</p>
               </div>
               <Button asChild>
-                <Link href="/orders/new">
+                <Link href={newOrderHref}>
                   <Plus className="mr-2 h-4 w-4" />
                   新建订单
                 </Link>
@@ -507,11 +751,11 @@ export function OrderList() {
                 <TableRow>
                   <TableHead>类型</TableHead>
                   <TableHead>订单编号</TableHead>
-                  <TableHead>设备/服务</TableHead>
+                  <TableHead>{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
                   <TableHead>客户</TableHead>
-                  <TableHead>日期</TableHead>
+                  <TableHead>{isBadmintonOnlyView ? '上课时间' : '日期'}</TableHead>
                   <TableHead>总金额</TableHead>
-                  <TableHead>押金</TableHead>
+                  {!isBadmintonOnlyView && <TableHead>押金</TableHead>}
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -533,7 +777,7 @@ export function OrderList() {
                   return (
                     <TableRow
                       key={order.id}
-                      className={cn(isUrgent && 'bg-orange-50/50')}
+                      className={cn(getRowBackgroundClass(order.status, isUrgent))}
                     >
                       <TableCell>
                         <Badge variant={isBadminton ? 'secondary' : 'outline'} className={isBadminton ? 'bg-emerald-100 text-emerald-800' : ''}>
@@ -553,7 +797,7 @@ export function OrderList() {
                           <div className="flex items-center gap-2">
                             {categoryIcon && <span className="flex-shrink-0">{categoryIcon}</span>}
                             <div>
-                              <div className="font-medium">{firstItem.name}</div>
+                              <div className="font-medium">{firstItem.short_name?.trim() || firstItem.name}</div>
                               {firstItem.category && <div className="text-sm text-muted-foreground">{firstItem.category.name}</div>}
                               {itemCount > 1 && <div className="text-xs text-muted-foreground mt-1">等 {itemCount} 项</div>}
                             </div>
@@ -563,11 +807,27 @@ export function OrderList() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div>
+                        <div className="space-y-0.5">
                           <div>{order.customer_name}</div>
-                          {(order.customer_phone || order.customer_email) && (
-                            <div className="text-xs text-muted-foreground">
-                              {[order.customer_phone, order.customer_email].filter(Boolean).join(' · ')}
+                          {order.customer_phone && <div className="text-xs text-muted-foreground">{order.customer_phone}</div>}
+                          {!isBadminton && order.customer_address?.trim() && (
+                            <div className="pt-0.5 relative inline-block group">
+                              <button
+                                type="button"
+                                aria-label="查看详细地址"
+                                className="inline-flex items-center text-muted-foreground hover:text-foreground focus-visible:text-foreground cursor-help"
+                              >
+                                <MapPin className="h-3.5 w-3.5" />
+                              </button>
+                              <div
+                                role="tooltip"
+                                className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-72 rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md group-hover:block group-focus-within:block"
+                              >
+                                <div className="font-medium mb-1">客户地址</div>
+                                <div className="break-words whitespace-normal leading-relaxed text-muted-foreground">
+                                  {order.customer_address}
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -601,6 +861,32 @@ export function OrderList() {
                                       <Package className="h-4 w-4 text-orange-500 shrink-0" />
                                       <span className="text-sm font-medium">结束: {formatDateShort(order.end_date)}</span>
                                     </div>
+                                    {order.customer_address?.trim() && (
+                                      <div className="pt-1.5 mt-1.5 border-t border-border/60">
+                                        {shipSuggestions[order.id] ? (
+                                          <div className="text-xs text-foreground">
+                                            <span className="font-medium">建议最晚 {shipSuggestions[order.id].recommendShipBy} 发货</span>
+                                            <span className="text-muted-foreground ml-1">（{shipSuggestions[order.id].suggestedExpress}）</span>
+                                          </div>
+                                        ) : (
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                                            onClick={() => fetchShipSuggestion(order)}
+                                            disabled={shipSuggestionLoadingId === order.id}
+                                          >
+                                            {shipSuggestionLoadingId === order.id ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                                            ) : (
+                                              <Sparkles className="h-3.5 w-3.5 mr-1" />
+                                            )}
+                                            AI 推荐发货
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
                                   </>
                                 ) : isInProgress ? (
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -625,9 +911,13 @@ export function OrderList() {
                         )}
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(order.total_amount)}</TableCell>
-                      <TableCell>{order.total_deposit > 0 ? formatCurrency(order.total_deposit) : '-'}</TableCell>
+                      {!isBadmintonOnlyView && (
+                        <TableCell>{order.total_deposit > 0 ? formatCurrency(order.total_deposit) : '-'}</TableCell>
+                      )}
                       <TableCell>
-                        <Badge variant={getStatusBadgeVariant(order.status)}>{getStatusLabel(order.status)}</Badge>
+                        <Badge variant={getStatusBadgeVariant(order.status)} className={getStatusBadgeClassName(order.status)}>
+                          {getStatusLabel(order.status, isBadminton)}
+                        </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2 flex-wrap">
@@ -660,21 +950,7 @@ export function OrderList() {
                               size="sm"
                               className="text-muted-foreground"
                               onClick={() => {
-                                if (confirm('确定要回退订单状态吗？这将删除已生成的交易记录。')) {
-                                  fetch(`/api/orders/${order.id}`, {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ status: 'in_progress' }),
-                                  }).then((r) => {
-                                    if (r.ok) {
-                                      loadOrders()
-                                      window.dispatchEvent(new CustomEvent('orderUpdated'))
-                                      localStorage.setItem('orderUpdated', Date.now().toString())
-                                    } else {
-                                      r.json().then((e) => alert(e.error || '回退失败'))
-                                    }
-                                  }).catch((e) => alert(e.message || '回退失败'))
-                                }
+                                setRollbackOrder(order)
                               }}
                             >
                               <RotateCcw className="mr-1 h-3.5 w-3.5" />
@@ -749,6 +1025,30 @@ export function OrderList() {
             >
               {deleting ? '删除中...' : '删除'}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!rollbackOrder} onOpenChange={(open) => !open && !rollingBack && setRollbackOrder(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认回退</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要将订单「{rollbackOrder?.customer_name}」从已完成回退到待收货吗？这将删除该订单已生成的自动交易记录。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={rollingBack}>取消</AlertDialogCancel>
+            <Button onClick={() => handleRollback()} disabled={rollingBack} variant="secondary">
+              {rollingBack ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  处理中...
+                </>
+              ) : (
+                '确认回退'
+              )}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -5,6 +5,7 @@ import {
   getCustomers as getCustomersFromSupabase,
   getCategories as getCategoriesFromSupabase,
 } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 export async function GET() {
   try {
@@ -53,9 +54,6 @@ export async function GET() {
     return NextResponse.json({ status })
   } catch (error) {
     console.error('Error getting sync status:', error)
-    return NextResponse.json(
-      { error: 'Failed to get sync status' },
-      { status: 500 }
-    )
+    return apiError('SYNC_STATUS_FETCH_FAILED', 'Failed to get sync status', 500)
   }
 }

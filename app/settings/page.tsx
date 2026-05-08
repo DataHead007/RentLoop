@@ -10,23 +10,23 @@ import { STORAGE_KEYS } from '@/lib/settings/storageKeys'
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<'api' | 'ai'>('ai')
-  const [geminiKey, setGeminiKey] = useState('')
+  const [siliconflowKey, setSiliconflowKey] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
-  const [showGeminiKey, setShowGeminiKey] = useState(false)
+  const [showSiliconflowKey, setShowSiliconflowKey] = useState(false)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    setGeminiKey(localStorage.getItem(STORAGE_KEYS.geminiApiKey) || '')
+    setSiliconflowKey(localStorage.getItem(STORAGE_KEYS.siliconflowApiKey) || '')
     setApiBaseUrl(localStorage.getItem(STORAGE_KEYS.apiBaseUrl) || '')
   }, [])
 
   function handleSave() {
     if (typeof window === 'undefined') return
-    if (geminiKey.trim()) {
-      localStorage.setItem(STORAGE_KEYS.geminiApiKey, geminiKey.trim())
+    if (siliconflowKey.trim()) {
+      localStorage.setItem(STORAGE_KEYS.siliconflowApiKey, siliconflowKey.trim())
     } else {
-      localStorage.removeItem(STORAGE_KEYS.geminiApiKey)
+      localStorage.removeItem(STORAGE_KEYS.siliconflowApiKey)
     }
     if (apiBaseUrl.trim()) {
       localStorage.setItem(STORAGE_KEYS.apiBaseUrl, apiBaseUrl.trim())
@@ -91,32 +91,33 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>AI 功能</CardTitle>
             <CardDescription>
-              配置 Gemini API Key 以使用快捷录入、客户解析等 AI 功能。Key 仅存储在当前浏览器本地，不会上传到服务器。
+              配置硅基流动 API Key，使用 Qwen3-VL-32B 完成订单/客户解析（含图片）与发货日推荐。Key
+              仅保存在本机浏览器，请求时由前端传给本站 API，不会写入业务数据库。
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="gemini_api_key">Gemini API Key</Label>
+              <Label htmlFor="siliconflow_api_key">硅基流动 API Key</Label>
               <div className="flex gap-2">
                 <Input
-                  id="gemini_api_key"
-                  type={showGeminiKey ? 'text' : 'password'}
-                  placeholder="输入你的 Gemini API Key"
-                  value={geminiKey}
-                  onChange={(e) => setGeminiKey(e.target.value)}
+                  id="siliconflow_api_key"
+                  type={showSiliconflowKey ? 'text' : 'password'}
+                  placeholder="sk-..."
+                  value={siliconflowKey}
+                  onChange={(e) => setSiliconflowKey(e.target.value)}
                   className="flex-1"
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
-                  onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  onClick={() => setShowSiliconflowKey(!showSiliconflowKey)}
                 >
-                  {showGeminiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showSiliconflowKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                可从 Google AI Studio 获取：https://aistudio.google.com/apikey
+                默认模型 Qwen/Qwen3-VL-32B-Instruct；可在服务端环境变量 SILICONFLOW_VL_MODEL 覆盖。控制台：https://cloud.siliconflow.cn/
               </p>
             </div>
           </CardContent>

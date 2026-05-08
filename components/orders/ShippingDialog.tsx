@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { getSiliconflowApiKey } from '@/lib/settings/storageKeys'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Upload, XCircle, Truck, Loader2 } from 'lucide-react'
+import { Upload, XCircle, Truck, Loader2, Sparkles, MapPin } from 'lucide-react'
 import Image from 'next/image'
 import type { Order } from '@/lib/types/database'
 
@@ -109,6 +110,17 @@ export function ShippingDialog({ order, open, onOpenChange, onSuccess }: Shippin
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // AI 推荐发货时间
+  const [shipSuggestion, setShipSuggestion] = useState<{
+    distanceCategory: string
+    sfDays: number
+    standardDays: number
+    recommendShipBy: string
+    suggestedExpress: string
+    reason: string
+  } | null>(null)
+  const [shipSuggestionLoading, setShipSuggestionLoading] = useState(false)
+
   // 打开对话框时，根据订单与当前发货类型同步运费输入框（同类型已有则预填该笔金额，否则为空）
   useEffect(() => {
     if (open && order) {
@@ -116,8 +128,41 @@ export function ShippingDialog({ order, open, onOpenChange, onSuccess }: Shippin
       const sameTypeFee = fees.find((f: any) => f.shipping_type === shippingType)
       const amount = sameTypeFee != null ? Number(sameTypeFee.amount) || 0 : 0
       setShippingCost(amount > 0 ? String(amount) : '')
+      setShipSuggestion(null)
     }
   }, [open, order?.id, order?.shipping_fees, shippingType])
+
+  const fetchShipSuggestion = async () => {
+    const address = order?.customer_address?.trim()
+    if (!address) {
+      setError('订单暂无收货地址，无法推荐')
+      return
+    }
+    setShipSuggestionLoading(true)
+    setError(null)
+    try {
+      const apiKey = getSiliconflowApiKey()
+      const res = await fetch('/api/ai/suggest-ship-date', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-SiliconFlow-Api-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({
+          origin: '上海市',
+          destinationAddress: address,
+          startDate: order.start_date,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || '获取推荐失败')
+      setShipSuggestion(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '获取推荐失败')
+    } finally {
+      setShipSuggestionLoading(false)
+    }
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -299,6 +344,7 @@ export function ShippingDialog({ order, open, onOpenChange, onSuccess }: Shippin
       setImageFile(null)
       setImagePreview(null)
       setError(null)
+      setShipSuggestion(null)
       onOpenChange(false)
     }
   }
@@ -319,6 +365,56 @@ export function ShippingDialog({ order, open, onOpenChange, onSuccess }: Shippin
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* AI 推荐发货时间：有收货地址且为发货时展示 */}
+          {shippingType === 'outbound' && order?.customer_address?.trim() && (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  AI 推荐发货时间
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchShipSuggestion}
+                  disabled={shipSuggestionLoading || loading || compressing}
+                >
+                  {shipSuggestionLoading ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      生成中
+                    </>
+                  ) : (
+                    '获取推荐'
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5" />
+                发货地：上海市 → 收货：{order.customer_address.slice(0, 20)}{order.customer_address.length > 20 ? '…' : ''}
+              </p>
+              {shipSuggestion && (
+                <div className="text-sm space-y-2 pt-2 border-t">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded bg-blue-100 text-blue-800 px-2 py-0.5">距离：{shipSuggestion.distanceCategory}</span>
+                    <span className="rounded bg-slate-100 text-slate-700 px-2 py-0.5">顺丰约 {shipSuggestion.sfDays} 天</span>
+                    <span className="rounded bg-slate-100 text-slate-700 px-2 py-0.5">普通快递约 {shipSuggestion.standardDays} 天</span>
+                  </div>
+                  <p className="font-medium text-foreground">
+                    建议最晚发货：<span className="text-primary">{shipSuggestion.recommendShipBy}</span>
+                    {shipSuggestion.suggestedExpress && (
+                      <span className="ml-2 text-muted-foreground">（推荐 {shipSuggestion.suggestedExpress}）</span>
+                    )}
+                  </p>
+                  {shipSuggestion.reason && (
+                    <p className="text-muted-foreground">{shipSuggestion.reason}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 发货类型 */}
           <div className="space-y-2">
             <Label htmlFor="shipping-type">发货类型 *</Label>

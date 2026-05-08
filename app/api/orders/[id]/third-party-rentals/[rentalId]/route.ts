@@ -1,23 +1,23 @@
 import { NextResponse } from 'next/server'
 import { getOrder, updateThirdPartyRental } from '@/lib/supabase/queries'
+import { apiError } from '@/lib/api/response'
 
 /**
  * PATCH 单条第三方租赁：更新 game_name, rental_cost, deposit, platform, provider, provider_order_id, notes
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string; rentalId: string } }
+  { params }: { params: Promise<{ id: string; rentalId: string }> }
 ) {
   try {
-    const orderId = params.id
-    const rentalId = params.rentalId
+    const { id: orderId, rentalId } = await params
     const order = await getOrder(orderId)
     if (!order) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      return apiError('NOT_FOUND', 'Order not found', 404)
     }
     const rental = order.third_party_rentals?.find((r) => r.id === rentalId)
     if (!rental) {
-      return NextResponse.json({ error: 'Third party rental not found' }, { status: 404 })
+      return apiError('NOT_FOUND', 'Third party rental not found', 404)
     }
 
     const body = await request.json()
@@ -40,9 +40,6 @@ export async function PATCH(
     return NextResponse.json(finalOrder)
   } catch (error: unknown) {
     console.error('Error updating third party rental:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to update third party rental' },
-      { status: 500 }
-    )
+    return apiError('THIRD_PARTY_RENTAL_UPDATE_FAILED', error instanceof Error ? error.message : 'Failed to update third party rental', 500)
   }
 }

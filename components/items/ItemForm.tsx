@@ -10,15 +10,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
-import { CalendarIcon, Loader2, Upload, X, FileText, Plus, Edit } from 'lucide-react'
+import { CalendarIcon, Loader2, Upload, X, FileText, Plus, Edit, Sparkles, Link as LinkIcon, Image as ImageIcon } from 'lucide-react'
 import { formatDateShort, formatDateToLocalString } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import type { Category } from '@/lib/types/database'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { getSiliconflowApiKey } from '@/lib/settings/storageKeys'
 
 interface ItemFormData {
   category_id: string
   name: string
+  short_name: string
   brand: string
   model: string
   serial_number: string
@@ -29,6 +31,17 @@ interface ItemFormData {
   sale_date: Date | undefined
   status: 'available' | 'rented' | 'in_use' | 'maintenance' | 'retired' | 'sold'
   notes: string
+}
+
+interface AiParsedItem {
+  name?: string
+  brand?: string
+  model?: string
+  category_hint?: string
+  serial_number?: string
+  purchase_price_hint?: number
+  notes?: string
+  confidence?: number
 }
 
 interface HistoricalIncomeData {
@@ -51,6 +64,10 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
   const [historicalIncomes, setHistoricalIncomes] = useState<HistoricalIncomeData[]>([])
   const [showAddIncome, setShowAddIncome] = useState(false)
   const [editingIncomeIndex, setEditingIncomeIndex] = useState<number | null>(null)
+  const [aiImageLoading, setAiImageLoading] = useState(false)
+  const [aiUrlLoading, setAiUrlLoading] = useState(false)
+  const [aiUrl, setAiUrl] = useState('')
+  const [aiResult, setAiResult] = useState<AiParsedItem | null>(null)
   const [newIncome, setNewIncome] = useState<HistoricalIncomeData>({
     amount: 0,
     transaction_date: undefined,
@@ -59,6 +76,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
   const [formData, setFormData] = useState<ItemFormData>({
     category_id: '',
     name: '',
+    short_name: '',
     brand: '',
     model: '',
     serial_number: '',
@@ -116,6 +134,123 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.sold_price, formData.sale_date])
 
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result
+        if (typeof result !== 'string') {
+          reject(new Error('图片读取失败'))
+          return
+        }
+        const raw = result.includes(',') ? result.split(',')[1] : result
+        resolve(raw)
+      }
+      reader.onerror = () => reject(new Error('图片读取失败'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  function findCategoryIdByHint(hint?: string): string | undefined {
+    if (!hint?.trim()) return undefined
+    const q = hint.trim().toLowerCase()
+    const exact = categories.find((c) => c.name?.toLowerCase() === q)
+    if (exact) return exact.id
+    const include = categories.find((c) => c.name?.toLowerCase().includes(q) || q.includes(c.name?.toLowerCase() || ''))
+    return include?.id
+  }
+
+  function applyAiParsedToForm(parsed: AiParsedItem) {
+    const matchedCategoryId = findCategoryIdByHint(parsed.category_hint)
+    setFormData((prev) => ({
+      ...prev,
+      category_id: matchedCategoryId || prev.category_id,
+      name: parsed.name || prev.name,
+      brand: parsed.brand || prev.brand,
+      model: parsed.model || prev.model,
+      serial_number: parsed.serial_number || prev.serial_number,
+      purchase_price:
+        typeof parsed.purchase_price_hint === 'number' && parsed.purchase_price_hint > 0
+          ? parsed.purchase_price_hint
+          : prev.purchase_price,
+      notes:
+        parsed.notes && parsed.notes.trim()
+          ? prev.notes?.trim()
+            ? `${prev.notes}\n${parsed.notes.trim()}`
+            : parsed.notes.trim()
+          : prev.notes,
+    }))
+  }
+
+  async function handleAiImageParse(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAiImageLoading(true)
+    try {
+      const imageBase64 = await fileToBase64(file)
+      const apiKey = getSiliconflowApiKey()
+      const res = await fetch('/api/ai/parse-item-from-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-SiliconFlow-Api-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({
+          imageBase64,
+          imageMimeType: file.type || 'image/jpeg',
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { error?: string }).error || '图片识别失败，请重试')
+      }
+      const data = (await res.json()) as AiParsedItem
+      setAiResult(data)
+      if (!data || Object.keys(data).length === 0) {
+        alert('未识别到可用信息，请换一张更清晰的商品图或铭牌图')
+      }
+    } catch (error) {
+      console.error('AI image parse failed:', error)
+      alert(error instanceof Error ? error.message : '图片识别失败，请重试')
+    } finally {
+      setAiImageLoading(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleAiUrlParse() {
+    if (!aiUrl.trim()) {
+      alert('请先输入产品链接')
+      return
+    }
+    setAiUrlLoading(true)
+    try {
+      const apiKey = getSiliconflowApiKey()
+      const res = await fetch('/api/ai/parse-item-from-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-SiliconFlow-Api-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({ url: aiUrl.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { error?: string }).error || '链接解析失败，请重试')
+      }
+      const data = (await res.json()) as AiParsedItem
+      setAiResult(data)
+      if (!data || Object.keys(data).length === 0) {
+        alert('未识别到可用信息，请尝试更具体的产品页链接')
+      }
+    } catch (error) {
+      console.error('AI url parse failed:', error)
+      alert(error instanceof Error ? error.message : '链接解析失败，请重试')
+    } finally {
+      setAiUrlLoading(false)
+    }
+  }
+
   async function loadCategories() {
     try {
       const response = await fetch('/api/categories')
@@ -138,6 +273,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
       setFormData({
         category_id: item.category_id || '',
         name: item.name || '',
+        short_name: item.short_name || '',
         brand: item.brand || '',
         model: item.model || '',
         serial_number: item.serial_number || '',
@@ -205,6 +341,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
       const itemData = {
         category_id: formData.category_id,
         name: formData.name,
+        short_name: formData.short_name?.trim() || null,
         brand: formData.brand || null,
         model: formData.model || null,
         serial_number: formData.serial_number || null,
@@ -285,6 +422,97 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
           <CardDescription>{itemId ? '修改设备的基本信息' : '填写设备的基本信息'}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!itemId && (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Sparkles className="h-4 w-4 text-primary" />
+                AI 快速录入（图片识别 / 产品链接）
+              </div>
+              <div className="flex flex-col gap-2 md:flex-row">
+                <input
+                  id="ai-item-image"
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleAiImageParse}
+                  disabled={aiImageLoading || aiUrlLoading}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={aiImageLoading || aiUrlLoading}
+                  onClick={() => document.getElementById('ai-item-image')?.click()}
+                >
+                  {aiImageLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <ImageIcon className="mr-2 h-4 w-4" />
+                  )}
+                  识别图片
+                </Button>
+                <div className="flex flex-1 gap-2">
+                  <Input
+                    value={aiUrl}
+                    onChange={(e) => setAiUrl(e.target.value)}
+                    placeholder="粘贴官网/电商产品链接"
+                    disabled={aiImageLoading || aiUrlLoading}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAiUrlParse}
+                    disabled={aiImageLoading || aiUrlLoading}
+                  >
+                    {aiUrlLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <LinkIcon className="mr-2 h-4 w-4" />
+                    )}
+                    解析链接
+                  </Button>
+                </div>
+              </div>
+              {aiResult && (
+                <div className="rounded-md border bg-background p-3 space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium">识别结果（可编辑后回填）</p>
+                    {typeof aiResult.confidence === 'number' && (
+                      <span className="text-muted-foreground">
+                        置信度 {Math.round(aiResult.confidence * 100)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid gap-1 md:grid-cols-2 text-muted-foreground">
+                    <p>名称：{aiResult.name || '-'}</p>
+                    <p>品牌：{aiResult.brand || '-'}</p>
+                    <p>型号：{aiResult.model || '-'}</p>
+                    <p>品类建议：{aiResult.category_hint || '-'}</p>
+                    <p>序列号：{aiResult.serial_number || '-'}</p>
+                    <p>价格建议：{typeof aiResult.purchase_price_hint === 'number' ? `¥${aiResult.purchase_price_hint}` : '-'}</p>
+                  </div>
+                  {aiResult.notes && <p className="text-muted-foreground">备注建议：{aiResult.notes}</p>}
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" onClick={() => setAiResult(null)}>
+                      清空结果
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        applyAiParsedToForm(aiResult)
+                        alert('已回填识别结果，请检查后再保存')
+                      }}
+                    >
+                      一键回填
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                建议上传清晰商品图、机身铭牌或发票截图；链接优先使用产品详情页。
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="category_id">品类 *</Label>
             <Select
@@ -328,6 +556,16 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="例如：Canon EOS R5"
               required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="short_name">昵称/简称</Label>
+            <Input
+              id="short_name"
+              value={formData.short_name}
+              onChange={(e) => setFormData({ ...formData, short_name: e.target.value })}
+              placeholder="例如：A7M4、R5，订单列表将显示此名称"
             />
           </div>
 

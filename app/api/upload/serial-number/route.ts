@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { uploadSerialNumberImage } from '@/lib/supabase/storage'
+import { apiError } from '@/lib/api/response'
 
 export async function POST(request: Request) {
   try {
@@ -9,10 +10,7 @@ export async function POST(request: Request) {
     const type = formData.get('type') as 'checkout' | 'checkin'
 
     if (!file || !orderId || !type) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+      return apiError('INVALID_REQUEST', 'Missing required fields', 400)
     }
 
     const url = await uploadSerialNumberImage(file, orderId, type)
@@ -24,14 +22,10 @@ export async function POST(request: Request) {
     const errorMessage = error?.message || error?.error || '上传图片失败'
     const errorDetails = error?.details || error?.hint || ''
     
-    return NextResponse.json(
-      { 
-        error: errorMessage,
-        details: errorDetails,
-        // 如果是 Supabase Storage 错误，提供更多信息
-        code: error?.code || error?.statusCode || 'UNKNOWN_ERROR'
-      },
-      { status: 500 }
+    return apiError(
+      error?.code || error?.statusCode || 'SERIAL_IMAGE_UPLOAD_FAILED',
+      errorDetails ? `${errorMessage} (${errorDetails})` : errorMessage,
+      500
     )
   }
 }

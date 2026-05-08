@@ -1,24 +1,25 @@
 import { NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
-
-const MODEL = 'gemini-3-flash-preview'
+import {
+  resolveSiliconflowApiKey,
+  siliconflowChatMultimodal,
+} from '@/lib/ai/siliconflow'
+import { apiError } from '@/lib/api/response'
 
 export async function POST(request: Request) {
   let body: Record<string, unknown>
   try {
     body = (await request.json()) as Record<string, unknown>
   } catch {
-    return NextResponse.json({ error: '无效的请求体' }, { status: 400 })
+    return apiError('INVALID_REQUEST', '无效的请求体', 400)
   }
 
-  const headerKey = request.headers.get('X-Gemini-Api-Key')
-  const bodyKey = typeof body?.apiKey === 'string' ? body.apiKey.trim() : ''
-  const apiKey = headerKey?.trim() || process.env.GEMINI_API_KEY || bodyKey || null
+  const apiKey = resolveSiliconflowApiKey(request, body)
 
   if (!apiKey) {
-    return NextResponse.json(
-      { error: 'AI 功能未配置，请在设置页配置 Gemini API Key 或在 .env.local 中设置 GEMINI_API_KEY' },
-      { status: 503 }
+    return apiError(
+      'AI_NOT_CONFIGURED',
+      'AI 功能未配置，请在设置页配置硅基流动 API Key，或在 .env.local 中设置 SILICONFLOW_API_KEY',
+      503
     )
   }
 
@@ -31,21 +32,12 @@ export async function POST(request: Request) {
     }
 
     if (!text && !imageBase64) {
-      return NextResponse.json(
-        { error: '请提供文字或图片' },
-        { status: 400 }
-      )
+      return apiError('INVALID_REQUEST', '请提供文字或图片', 400)
     }
 
     if (!Array.isArray(itemNames)) {
-      return NextResponse.json(
-        { error: 'itemNames 必须为数组' },
-        { status: 400 }
-      )
+      return apiError('INVALID_REQUEST', 'itemNames 必须为数组', 400)
     }
-
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: MODEL })
 
     const today = new Date().toISOString().split('T')[0]
     const itemList = itemNames.length > 0 ? itemNames.join('、') : '（无可用资产）'
@@ -76,26 +68,15 @@ export async function POST(request: Request) {
 
 请只输出有效 JSON，不要有任何前缀或后缀。`
 
-    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = []
+    const userText = text?.trim()
+      ? `用户输入：\n${text.trim()}\n\n${prompt}`
+      : prompt
 
-    if (imageBase64) {
-      parts.push({
-        inlineData: {
-          mimeType: imageMimeType || 'image/png',
-          data: imageBase64.replace(/^data:image\/\w+;base64,/, ''),
-        },
-      })
-    }
-
-    if (text?.trim()) {
-      parts.push({ text: `用户输入：\n${text.trim()}\n\n${prompt}` })
-    } else {
-      parts.push({ text: prompt })
-    }
-
-    const result = await model.generateContent(parts)
-    const response = result.response
-    const output = response.text()?.trim() || ''
+    const output = await siliconflowChatMultimodal(apiKey, {
+      imageBase64,
+      imageMimeType,
+      text: userText,
+    })
 
     if (!output) {
       return NextResponse.json({
@@ -116,15 +97,20 @@ export async function POST(request: Request) {
       const jsonStr = jsonMatch ? jsonMatch[0] : output
       parsed = JSON.parse(jsonStr) as Record<string, unknown>
     } catch {
-      return NextResponse.json(
-        { error: 'AI 返回格式无效，请重试' },
-        { status: 500 }
-      )
+      return apiError('AI_RESPONSE_INVALID', 'AI 返回格式无效，请重试', 500)
     }
 
     const startDate = parsed.start_date as string | undefined
     const endDate = parsed.end_date as string | undefined
-    const items = parsed.items as Array<{ item_name: string; days?: number; daily_rate?: number; subtotal?: number; deposit?: number }> | undefined
+    const items = parsed.items as
+      | Array<{
+          item_name: string
+          days?: number
+          daily_rate?: number
+          subtotal?: number
+          deposit?: number
+        }>
+      | undefined
 
     if (startDate && !endDate && Array.isArray(items) && items.length > 0 && items[0].days) {
       const start = new Date(startDate)
@@ -137,9 +123,6 @@ export async function POST(request: Request) {
     return NextResponse.json(parsed)
   } catch (error) {
     console.error('[AI parse-order]', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '解析失败，请重试' },
-      { status: 500 }
-    )
+    return apiError('AI_PARSE_ORDER_FAILED', error instanceof Error ? error.message : '解析失败，请重试', 500)
   }
 }

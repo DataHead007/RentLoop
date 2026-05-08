@@ -56,4 +56,15 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* 隐藏 number 的步进箭头，避免触摸板/触控误触改变数值 */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }

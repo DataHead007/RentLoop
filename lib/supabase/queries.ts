@@ -1,5 +1,8 @@
 import { supabase } from './client'
+import { supabaseServer } from './server'
 import { createClient } from '@supabase/supabase-js'
+// API 路由在服务端执行，使用 supabaseServer 绕过 RLS；客户端使用 anon key
+const supabaseDb = typeof window === 'undefined' ? supabaseServer : supabase
 import type { 
   Category, 
   Item, 
@@ -17,7 +20,7 @@ import type {
 
 // 品类查询
 export async function getCategories(): Promise<Category[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('categories')
     .select('*')
     .order('name')
@@ -27,7 +30,7 @@ export async function getCategories(): Promise<Category[]> {
 }
 
 export async function createCategory(category: Omit<Category, 'id' | 'created_at' | 'updated_at'>): Promise<Category> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('categories')
     .insert(category)
     .select()
@@ -38,7 +41,7 @@ export async function createCategory(category: Omit<Category, 'id' | 'created_at
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseDb
     .from('categories')
     .delete()
     .eq('id', id)
@@ -50,7 +53,7 @@ export async function updateCategory(
   id: string,
   updates: { name?: string; description?: string | null }
 ): Promise<Category> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('categories')
     .update(updates)
     .eq('id', id)
@@ -63,7 +66,7 @@ export async function updateCategory(
 
 // 资产查询
 export async function getItems(): Promise<Item[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('items')
     .select(`
       *,
@@ -77,7 +80,7 @@ export async function getItems(): Promise<Item[]> {
 
 /**
  * 获取指定日期范围内可用的资产列表
- * 排除被其他订单（pending/confirmed/in_progress）在重叠日期占用的资产
+ * 仅排除被已发货（in_progress）订单在重叠日期占用的资产，待发货订单不占
  * @param startDate 开始日期 YYYY-MM-DD
  * @param endDate 结束日期 YYYY-MM-DD
  * @param excludeOrderId 编辑订单时排除的订单 ID
@@ -90,24 +93,25 @@ export async function getItemsAvailableForDateRange(
   const reqStart = startDate.split('T')[0] ?? startDate
   const reqEnd = endDate.split('T')[0] ?? endDate
 
-  const { data: items, error: itemsError } = await supabase
+  // 包含 rented/in_use，可用性仅由「该档期内是否有 in_progress 订单」决定，便于同一资产接不重叠档期
+  const { data: items, error: itemsError } = await supabaseDb
     .from('items')
     .select(`
       *,
       category:categories(*)
     `)
-    .in('status', ['available', 'retired'])
+    .in('status', ['available', 'retired', 'rented', 'in_use'])
     .order('created_at', { ascending: false })
 
   if (itemsError) throw itemsError
   if (!items || items.length === 0) return []
 
-  // 查询日期重叠的租赁订单：start_date <= reqEnd AND end_date >= reqStart
-  let ordersQuery = supabase
+  // 仅已发货（in_progress）的订单占用档期，待发货（pending/confirmed）不占用，便于远期订单创建后仍可接其他档期
+  let ordersQuery = supabaseDb
     .from('orders')
     .select('id')
     .eq('order_type', 'rental')
-    .in('status', ['pending', 'confirmed', 'in_progress'])
+    .eq('status', 'in_progress')
     .lte('start_date', reqEnd)
     .gte('end_date', reqStart)
 
@@ -121,7 +125,7 @@ export async function getItemsAvailableForDateRange(
 
   const orderIds = overlappingOrders.map((o: { id: string }) => o.id)
 
-  const { data: orderItems, error: oiError } = await supabase
+  const { data: orderItems, error: oiError } = await supabaseDb
     .from('order_items')
     .select('item_id')
     .in('order_id', orderIds)
@@ -162,7 +166,7 @@ export async function getItemsWithOccupancyInfo(
   const reqEnd = endDate.split('T')[0] ?? endDate
 
   // 包含 rented/in_use 状态的资产，以便展示「使用中」分组
-  const { data: items, error: itemsError } = await supabase
+  const { data: items, error: itemsError } = await supabaseDb
     .from('items')
     .select(`
       *,
@@ -174,12 +178,12 @@ export async function getItemsWithOccupancyInfo(
   if (itemsError) throw itemsError
   if (!items || items.length === 0) return []
 
-  // 查询日期重叠的租赁订单及档期
-  let ordersQuery = supabase
+  // 仅已发货（in_progress）的订单计入占用档期，待发货订单不占
+  let ordersQuery = supabaseDb
     .from('orders')
     .select('id, start_date, end_date')
     .eq('order_type', 'rental')
-    .in('status', ['pending', 'confirmed', 'in_progress'])
+    .eq('status', 'in_progress')
     .lte('start_date', reqEnd)
     .gte('end_date', reqStart)
 
@@ -203,7 +207,7 @@ export async function getItemsWithOccupancyInfo(
 
   if (overlappingOrders && overlappingOrders.length > 0) {
     const orderIds = overlappingOrders.map((o: { id: string }) => o.id)
-    const { data: orderItems, error: oiError } = await supabase
+    const { data: orderItems, error: oiError } = await supabaseDb
       .from('order_items')
       .select('item_id, order_id')
       .in('order_id', orderIds)
@@ -244,7 +248,7 @@ export async function getItemsWithOccupancyInfo(
 }
 
 export async function getItem(id: string): Promise<Item | null> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('items')
     .select(`
       *,
@@ -283,7 +287,7 @@ export async function getItemWithStats(id: string): Promise<ItemWithStats | null
 }
 
 export async function createItem(item: Omit<Item, 'id' | 'created_at' | 'updated_at'>): Promise<Item> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('items')
     .insert(item)
     .select(`
@@ -297,7 +301,7 @@ export async function createItem(item: Omit<Item, 'id' | 'created_at' | 'updated
 }
 
 export async function updateItem(id: string, item: Partial<Item>): Promise<Item> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('items')
     .update(item)
     .eq('id', id)
@@ -312,7 +316,7 @@ export async function updateItem(id: string, item: Partial<Item>): Promise<Item>
 }
 
 export async function deleteItem(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseDb
     .from('items')
     .delete()
     .eq('id', id)
@@ -321,9 +325,9 @@ export async function deleteItem(id: string): Promise<void> {
 }
 
 // 获取资产统计信息（用于计算 ROI）- 优化版本：主要从 transactions 表查询
-export async function getItemStats(itemId: string, item?: { purchase_price: number; sold_price?: number | null }): Promise<{ total_revenue: number; net_profit: number; total_days_rented: number }> {
+export async function getItemStats(itemId: string, item?: { purchase_price: number; sold_price?: number | null }): Promise<{ total_revenue: number; net_profit: number; total_days_rented: number; effectivePurchaseCost: number; other_costs: number }> {
   // 1. 从 transactions 表查询该资产的所有交易（收入 + 支出）
-  const { data: allTransactions, error: transactionsError } = await supabase
+  const { data: allTransactions, error: transactionsError } = await supabaseDb
     .from('transactions')
     .select('amount, type, category')
     .eq('item_id', itemId)
@@ -356,7 +360,7 @@ export async function getItemStats(itemId: string, item?: { purchase_price: numb
   const effectivePurchaseCost = purchase_cost > 0 ? purchase_cost : purchasePrice
   
   // 2. 计算总出租天数（仍需要查询 order_items，因为天数不是财务概念）
-  const { data: orderItemsData, error: orderItemsError } = await supabase
+  const { data: orderItemsData, error: orderItemsError } = await supabaseDb
     .from('order_items')
     .select(`
       order:orders!inner(start_date, end_date, status)
@@ -393,7 +397,7 @@ export async function getItemsWithStats(): Promise<ItemWithStats[]> {
   const itemIds = items.map(item => item.id)
   
   // 批量查询所有资产的订单收入（一次性获取所有数据）
-  const { data: allOrderItems, error: orderItemsError } = await supabase
+  const { data: allOrderItems, error: orderItemsError } = await supabaseDb
     .from('order_items')
     .select(`
       item_id,
@@ -406,7 +410,7 @@ export async function getItemsWithStats(): Promise<ItemWithStats[]> {
   if (orderItemsError) throw orderItemsError
   
   // 批量查询所有资产的交易记录（收入和支出）- 一次性获取所有数据
-  const { data: allTransactions, error: transactionsError } = await supabase
+  const { data: allTransactions, error: transactionsError } = await supabaseDb
     .from('transactions')
     .select('item_id, amount, type, category')
     .in('item_id', itemIds)
@@ -496,7 +500,7 @@ export async function getOrders(
   opts?: { startDate?: string; endDate?: string; orderType?: 'rental' | 'badminton' | 'all' }
 ): Promise<Order[]> {
   const { startDate, endDate, orderType = 'all' } = opts || {}
-  let query = supabase
+  let query = supabaseDb
     .from('orders')
     .select(`
       *,
@@ -529,8 +533,19 @@ export async function getOrders(
   return data || []
 }
 
+/** 按幂等键查找已创建订单（用于 POST 重试去重） */
+export async function findOrderByIdempotencyKey(key: string): Promise<Order | null> {
+  const { data, error } = await supabaseDb
+    .from('orders')
+    .select('id')
+    .eq('idempotency_key', key)
+    .maybeSingle()
+  if (error || !data?.id) return null
+  return getOrder(data.id)
+}
+
 export async function getOrder(id: string): Promise<Order | null> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('orders')
     .select(`
       *,
@@ -544,9 +559,13 @@ export async function getOrder(id: string): Promise<Order | null> {
       badminton_order_lines:badminton_order_lines(*)
     `)
     .eq('id', id)
-    .single()
+    .maybeSingle()
 
-  if (error) throw error
+  if (error) {
+    // 未找到订单时返回 null，交由上层路由返回 404
+    if (error.code === 'PGRST116') return null
+    throw error
+  }
   return data
 }
 
@@ -587,7 +606,7 @@ export async function createOrder(
     order_type: (order as any).order_type ?? 'rental',
   }
 
-  const { data: orderData, error: orderError } = await supabase
+  const { data: orderData, error: orderError } = await supabaseDb
     .from('orders')
     .insert(orderDataToInsert)
     .select()
@@ -621,7 +640,7 @@ export async function createOrder(
       account_binding_type: item.account_binding_type || null,
     }))
     
-    const { data: insertedItems, error: itemsError } = await supabase
+    const { data: insertedItems, error: itemsError } = await supabaseDb
       .from('order_items')
       .insert(orderItemsWithOrderId)
       .select()
@@ -638,7 +657,7 @@ export async function createOrder(
       .filter((id): id is string => !!id && id.trim() !== '')
     
     if (itemIds.length > 0) {
-      const { data: items, error: itemsError } = await supabase
+      const { data: items, error: itemsError } = await supabaseDb
         .from('items')
         .select('id, category:categories(name)')
         .in('id', itemIds)
@@ -658,7 +677,7 @@ export async function createOrder(
           // 如果是游戏账号且绑定了设备
           if (isGameAccount && orderItem.device_id && orderItem.account_binding_type) {
             // 先结束该账号在该设备上的旧绑定（如果有）
-            await supabase
+            await supabaseDb
               .from('item_account_bindings')
               .update({ bind_end_date: order.start_date.split('T')[0] })
               .eq('account_item_id', orderItem.item_id)
@@ -690,7 +709,7 @@ export async function createOrder(
         }
         
         if (bindingsToCreate.length > 0) {
-          const { error: bindingsError } = await supabase
+          const { error: bindingsError } = await supabaseDb
             .from('item_account_bindings')
             .insert(bindingsToCreate)
           
@@ -710,7 +729,7 @@ export async function createOrder(
       order_id: orderId
     }))
     
-    const { error: rentalsError } = await supabase
+    const { error: rentalsError } = await supabaseDb
       .from('third_party_rentals')
       .insert(rentalsWithOrderId)
     
@@ -724,7 +743,7 @@ export async function createOrder(
       order_id: orderId
     }))
     
-    const { error: feesError } = await supabase
+    const { error: feesError } = await supabaseDb
       .from('shipping_fees')
       .insert(feesWithOrderId)
     
@@ -752,6 +771,8 @@ export type CreateBadmintonOrderInput = {
   customer_name: string
   customer_phone?: string | null
   customer_email?: string | null
+  /** 若提供则直接关联该客户档案，不再按姓名/电话自动合并 */
+  customer_id?: string | null
   service_type: string
   location: string
   service_date: string
@@ -759,6 +780,7 @@ export type CreateBadmintonOrderInput = {
   service_end_time?: string | null
   status?: Order['status']
   notes?: string | null
+  idempotency_key?: string | null
 }
 
 export type CreateBadmintonOrderLineInput = {
@@ -775,7 +797,11 @@ export async function createBadmintonOrder(
   if (!lines.length) throw new Error('羽毛球订单至少需要一笔收支明细')
 
   let customerId: string | null = null
-  if (order.customer_name) {
+  const explicitId =
+    typeof order.customer_id === 'string' && order.customer_id.trim() !== '' ? order.customer_id.trim() : null
+  if (explicitId) {
+    customerId = explicitId
+  } else if (order.customer_name) {
     try {
       const customer = await findOrCreateCustomer(
         order.customer_name,
@@ -818,9 +844,10 @@ export async function createBadmintonOrder(
     service_date: sd,
     service_start_time: order.service_start_time ?? null,
     service_end_time: order.service_end_time ?? null,
+    ...(order.idempotency_key ? { idempotency_key: order.idempotency_key } : {}),
   }
 
-  const { data: orderData, error: orderErr } = await supabase
+  const { data: orderData, error: orderErr } = await supabaseDb
     .from('orders')
     .insert(orderRow)
     .select()
@@ -839,7 +866,7 @@ export async function createBadmintonOrder(
     amount: Math.abs(Number(l.amount)) || 0,
     notes: l.notes ?? null,
   }))
-  const { error: linesErr } = await supabase.from('badminton_order_lines').insert(linesWithOrderId)
+  const { error: linesErr } = await supabaseDb.from('badminton_order_lines').insert(linesWithOrderId)
   if (linesErr) throw linesErr
 
   const full = await getOrder(orderId)
@@ -851,40 +878,46 @@ export async function updateOrder(
   id: string, 
   order: Partial<Omit<Order, 'id' | 'created_at' | 'updated_at' | 'order_items' | 'game_accounts' | 'third_party_rentals' | 'shipping_fees' | 'customer'>>
 ): Promise<Order> {
-  // 如果客户信息发生变化，需要更新客户档案
-  let customerId: string | null = order.customer_id || null
-  
-  if ((order.customer_name || order.customer_phone !== undefined || order.customer_email !== undefined) && !customerId) {
-    // 获取现有订单的客户信息
-    const { data: existingOrder } = await supabase
-      .from('orders')
-      .select('customer_name, customer_phone, customer_email, customer_id')
-      .eq('id', id)
-      .single()
-    
-    const name = order.customer_name || existingOrder?.customer_name || ''
-    const phone = order.customer_phone !== undefined ? order.customer_phone : existingOrder?.customer_phone || null
-    const email = order.customer_email !== undefined ? order.customer_email : existingOrder?.customer_email || null
-    
-    if (name) {
-      try {
-        const customer = await findOrCreateCustomer(name, phone, email)
-        customerId = customer.id
-        order.customer_id = customerId
-        console.log(`[Customer] Successfully created/found customer in updateOrder: ${customer.name} (ID: ${customer.id})`)
-      } catch (error) {
-        console.error('[Customer] Failed to find or create customer in updateOrder:', {
-          name,
-          phone,
-          email,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : undefined
-        })
+  // 若请求体显式携带 customer_id（含置为 null 解除关联），则不再自动 findOrCreate
+  const customerIdExplicit = Object.prototype.hasOwnProperty.call(order, 'customer_id')
+
+  if (
+    !customerIdExplicit &&
+    (order.customer_name || order.customer_phone !== undefined || order.customer_email !== undefined)
+  ) {
+    let customerId: string | null = order.customer_id || null
+
+    if (!customerId) {
+      const { data: existingOrder } = await supabaseDb
+        .from('orders')
+        .select('customer_name, customer_phone, customer_email, customer_id')
+        .eq('id', id)
+        .single()
+
+      const name = order.customer_name || existingOrder?.customer_name || ''
+      const phone = order.customer_phone !== undefined ? order.customer_phone : existingOrder?.customer_phone || null
+      const email = order.customer_email !== undefined ? order.customer_email : existingOrder?.customer_email || null
+
+      if (name) {
+        try {
+          const customer = await findOrCreateCustomer(name, phone, email)
+          customerId = customer.id
+          order.customer_id = customerId
+          console.log(`[Customer] Successfully created/found customer in updateOrder: ${customer.name} (ID: ${customer.id})`)
+        } catch (error) {
+          console.error('[Customer] Failed to find or create customer in updateOrder:', {
+            name,
+            phone,
+            email,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined
+          })
+        }
       }
     }
   }
   
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('orders')
     .update(order)
     .eq('id', id)
@@ -901,7 +934,7 @@ export async function updateOrder(
 
 export async function deleteOrder(id: string): Promise<void> {
   // 1. 先获取订单信息，以便后续清理
-  const { data: order, error: orderError } = await supabase
+  const { data: order, error: orderError } = await supabaseDb
     .from('orders')
     .select(`
       id,
@@ -922,7 +955,7 @@ export async function deleteOrder(id: string): Promise<void> {
     
     if (itemIds.length > 0) {
       // 恢复所有订单项中的资产状态
-      const { error: itemsError } = await supabase
+      const { error: itemsError } = await supabaseDb
         .from('items')
         .update({ status: 'available' })
         .in('id', itemIds)
@@ -938,7 +971,7 @@ export async function deleteOrder(id: string): Promise<void> {
   
   // 3. 结束账号绑定记录
   // 查找该订单相关的绑定记录，设置 bind_end_date
-  const { data: bindings, error: bindingsError } = await supabase
+  const { data: bindings, error: bindingsError } = await supabaseDb
     .from('item_account_bindings')
     .select('id')
     .eq('order_id', id)
@@ -946,7 +979,7 @@ export async function deleteOrder(id: string): Promise<void> {
   
   if (!bindingsError && bindings && bindings.length > 0) {
     const today = new Date().toISOString().split('T')[0]
-    const { error: updateBindingsError } = await supabase
+    const { error: updateBindingsError } = await supabaseDb
       .from('item_account_bindings')
       .update({ bind_end_date: today })
       .eq('order_id', id)
@@ -960,7 +993,7 @@ export async function deleteOrder(id: string): Promise<void> {
   }
   
   // 4. 删除自动创建的交易记录（只删除 auto_created = true 的记录）
-  const { data: transactions, error: transactionsError } = await supabase
+  const { data: transactions, error: transactionsError } = await supabaseDb
     .from('transactions')
     .select('id')
     .eq('order_id', id)
@@ -968,7 +1001,7 @@ export async function deleteOrder(id: string): Promise<void> {
   
   if (!transactionsError && transactions && transactions.length > 0) {
     const transactionIds = transactions.map((t: any) => t.id)
-    const { error: deleteTransactionsError } = await supabase
+    const { error: deleteTransactionsError } = await supabaseDb
       .from('transactions')
       .delete()
       .in('id', transactionIds)
@@ -981,12 +1014,19 @@ export async function deleteOrder(id: string): Promise<void> {
   }
   
   // 5. 最后删除订单（会级联删除 order_items, third_party_rentals, shipping_fees）
-  const { error } = await supabase
+  // 使用 .select() 确认实际删除行数：RLS 拒绝删除时 PostgREST 常返回 error=null 且 0 行，前端会误以为成功
+  const { data: deletedRows, error } = await supabaseDb
     .from('orders')
     .delete()
     .eq('id', id)
-  
+    .select('id')
+
   if (error) throw error
+  if (!deletedRows || deletedRows.length === 0) {
+    const err = new Error('ORDER_DELETE_NO_ROWS') as Error & { code?: string }
+    err.code = 'ORDER_DELETE_NO_ROWS'
+    throw err
+  }
 }
 
 // 交易查询（支持筛选）
@@ -1000,7 +1040,7 @@ export async function getTransactions(
     business_line?: BusinessLine | 'all'
   }
 ): Promise<Transaction[]> {
-  let query = supabase
+  let query = supabaseDb
     .from('transactions')
     .select(`
       *,
@@ -1032,10 +1072,10 @@ export async function getTransactions(
 }
 
 export async function createTransaction(
-  transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'> & { business_line?: BusinessLine }
+  transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at' | 'business_line'> & { business_line?: BusinessLine }
 ): Promise<Transaction> {
   const business_line = transaction.business_line ?? 'rental'
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('transactions')
     .insert({ ...transaction, business_line })
     .select('*')
@@ -1045,7 +1085,7 @@ export async function createTransaction(
 }
 
 export async function updateTransaction(id: string, transaction: Partial<Omit<Transaction, 'id' | 'created_at' | 'updated_at'>>): Promise<Transaction> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('transactions')
     .update(transaction)
     .eq('id', id)
@@ -1057,7 +1097,7 @@ export async function updateTransaction(id: string, transaction: Partial<Omit<Tr
 }
 
 export async function getTransaction(id: string): Promise<Transaction | null> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('transactions')
     .select(`
       *,
@@ -1075,7 +1115,7 @@ export async function getTransaction(id: string): Promise<Transaction | null> {
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseDb
     .from('transactions')
     .delete()
     .eq('id', id)
@@ -1098,7 +1138,7 @@ export async function getAccountBindings(
 ): Promise<ItemAccountBinding[]> {
   // 注意：此函数可能在服务器端调用，使用共享的客户端实例
   // 如果需要在服务器端使用服务端密钥，应该在 API 路由中处理
-  let query = supabase
+  let query = supabaseDb
     .from('item_account_bindings')
     .select(`
       *,
@@ -1123,14 +1163,75 @@ export async function getAccountBindings(
 // 客户查询
 // ============================================
 
+function normalizeCustomerNameForMatch(name: string | null | undefined): string {
+  return (name ?? '').trim().toLowerCase()
+}
+
+function normalizePhoneDigitsForMatch(phone: string | null | undefined): string {
+  return (phone ?? '').replace(/\D/g, '')
+}
+
+/** 未写 customer_id 的历史羽毛球订单，按姓名/电话与档案对齐后计入统计（避免老单永远不进累计） */
+function badmintonOrphanMatchesCustomer(
+  o: { customer_name?: string | null; customer_phone?: string | null },
+  c: Customer,
+  sameNormalizedNameCount: number
+): boolean {
+  if (normalizeCustomerNameForMatch(o.customer_name) !== normalizeCustomerNameForMatch(c.name)) return false
+  const od = normalizePhoneDigitsForMatch(o.customer_phone)
+  const cd = normalizePhoneDigitsForMatch(c.phone)
+  if (od.length > 0 && cd.length > 0) return od === cd
+  if (sameNormalizedNameCount !== 1) return false
+  if (od.length === 0 && cd.length === 0) return true
+  if (od.length === 0 && cd.length > 0) return true
+  return false
+}
+
+/** 与 getCustomers 去重规则一致：同电话优先，否则同邮箱，否则同名（小写）；均无则用 id 避免空键与 null 崩溃 */
+function rollupKeyForCustomerRow(c: {
+  id: string
+  name?: string | null
+  phone?: string | null
+  email?: string | null
+}): string {
+  return (
+    c.phone?.trim() ||
+    c.email?.trim() ||
+    (c.name ?? '').trim().toLowerCase() ||
+    `__id__${c.id}`
+  )
+}
+
+/** 与列表页聚合一致：同一逻辑客户的所有 customers.id（含重复建档） */
+async function getMergedCustomerIdsRollup(seedCustomerId: string): Promise<string[]> {
+  const { data: seed, error: seedErr } = await supabaseDb
+    .from('customers')
+    .select('id, name, phone, email')
+    .eq('id', seedCustomerId)
+    .single()
+
+  if (seedErr || !seed) return [seedCustomerId]
+
+  const { data: allRows, error: allErr } = await supabaseDb
+    .from('customers')
+    .select('id, name, phone, email')
+    .range(0, 9999)
+
+  if (allErr || !allRows?.length) return [seedCustomerId]
+
+  const k = rollupKeyForCustomerRow(seed)
+  const ids = allRows.filter((r) => rollupKeyForCustomerRow(r) === k).map((r) => r.id)
+  return ids.length > 0 ? ids : [seed.id]
+}
+
 export async function getCustomers(): Promise<Customer[]> {
   
   // 先查询总数量进行对比
-  const { count: totalCount } = await supabase
+  const { count: totalCount } = await supabaseDb
     .from('customers')
     .select('*', { count: 'exact', head: true })
   
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('customers')
     .select('*', { count: 'exact' })
     .order('last_order_date', { ascending: false, nullsFirst: false })
@@ -1146,10 +1247,8 @@ export async function getCustomers(): Promise<Customer[]> {
     const customerMap = new Map<string, Customer>()
     
     for (const customer of data) {
-      // 生成唯一键：优先使用 phone，其次 email，最后 name
-      const key = customer.phone?.trim() || 
-                  customer.email?.trim() || 
-                  customer.name.trim().toLowerCase()
+      // 生成唯一键：优先使用 phone，其次 email，最后 name（与 rollupKeyForCustomerRow 一致）
+      const key = rollupKeyForCustomerRow(customer)
       
       const existing = customerMap.get(key)
       
@@ -1182,52 +1281,85 @@ export async function getCustomers(): Promise<Customer[]> {
     const customerIdGroups = new Map<string, string[]>() // key -> customer IDs
     
     for (const customer of deduplicatedCustomers) {
-      const key = customer.phone?.trim() || 
-                  customer.email?.trim() || 
-                  customer.name.trim().toLowerCase()
-      
+      const key = rollupKeyForCustomerRow(customer)
+
       if (!customerIdGroups.has(key)) {
         customerIdGroups.set(key, [])
       }
-      
+
       // 添加当前客户ID
       customerIdGroups.get(key)!.push(customer.id)
       
       // 添加所有匹配的旧客户ID
       for (const otherCustomer of data) {
-        const otherKey = otherCustomer.phone?.trim() || 
-                        otherCustomer.email?.trim() || 
-                        otherCustomer.name.trim().toLowerCase()
+        const otherKey = rollupKeyForCustomerRow(otherCustomer)
         if (otherKey === key && otherCustomer.id !== customer.id) {
           customerIdGroups.get(key)!.push(otherCustomer.id)
         }
       }
     }
+
+    const sameNameCount = new Map<string, number>()
+    for (const c of deduplicatedCustomers) {
+      const n = normalizeCustomerNameForMatch(c.name)
+      sameNameCount.set(n, (sameNameCount.get(n) ?? 0) + 1)
+    }
+
+    const { data: orphanBadmintonRows, error: orphanBadmintonErr } = await supabaseDb
+      .from('orders')
+      .select('id, total_amount, start_date, service_date, order_type, customer_id, customer_name, customer_phone')
+      .eq('order_type', 'badminton')
+      .is('customer_id', null)
+
+    if (orphanBadmintonErr) {
+      console.error('[Customers] orphan badminton orders fetch failed:', orphanBadmintonErr)
+    }
+    const orphanBadmintonOrders = orphanBadmintonRows || []
     
     // 为每个去重后的客户重新计算统计信息（合并所有相同客户的订单）
     for (const customer of deduplicatedCustomers) {
-      const key = customer.phone?.trim() || 
-                  customer.email?.trim() || 
-                  customer.name.trim().toLowerCase()
-      
-      const customerIds = customerIdGroups.get(key) || [customer.id]
+      const key = rollupKeyForCustomerRow(customer)
+
+      const rawIds = customerIdGroups.get(key)
+      const customerIds = rawIds && rawIds.length > 0 ? rawIds : [customer.id]
       
       // 查询所有使用这些客户ID的订单（包括历史记录，包括租赁和羽毛球订单）
-      const { data: orders, error: ordersError } = await supabase
+      const { data: orders, error: ordersError } = await supabaseDb
         .from('orders')
         .select('id, total_amount, start_date, service_date, order_type, customer_id')
         .in('customer_id', customerIds)
-      
-      if (!ordersError && orders) {
-        // 去重订单（同一个订单可能因为customer_id变化而被多次统计）
-        const uniqueOrderIds = new Set(orders.map(o => o.id))
-        const uniqueOrders = Array.from(uniqueOrderIds).map(orderId => 
-          orders.find(o => o.id === orderId)!
-        )
-        
-        // 重新计算统计信息
+
+      if (ordersError) {
+        console.error('[Customers] orders by customer_id fetch failed:', ordersError)
+      }
+
+      const idLinkedOrders = !ordersError && orders ? orders : []
+      const nameKey = normalizeCustomerNameForMatch(customer.name)
+      const nameDupCount = sameNameCount.get(nameKey) ?? 1
+
+      const matchedOrphans = orphanBadmintonOrders.filter((o) =>
+        badmintonOrphanMatchesCustomer(o, customer, nameDupCount)
+      )
+
+      const mergedById = new Map<string, (typeof idLinkedOrders)[0] | (typeof orphanBadmintonOrders)[0]>()
+      for (const o of idLinkedOrders) mergedById.set(o.id, o)
+      for (const o of matchedOrphans) mergedById.set(o.id, o)
+      const uniqueOrders = [...mergedById.values()]
+
+      if (uniqueOrders.length > 0) {
+        // 重新计算统计信息（含历史上未写 customer_id 的羽毛球单，在姓名/电话可对上时并入）
         customer.total_orders = uniqueOrders.length
-        customer.total_amount = uniqueOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount?.toString() || '0') || 0), 0)
+        customer.total_amount = uniqueOrders.reduce(
+          (sum, o) => sum + (parseFloat(o.total_amount?.toString() || '0') || 0),
+          0
+        )
+
+        const badmintonOrders = uniqueOrders.filter((o) => (o as { order_type?: string }).order_type === 'badminton')
+        customer.badminton_order_count = badmintonOrders.length
+        customer.badminton_total_amount = badmintonOrders.reduce(
+          (sum, o) => sum + (parseFloat(o.total_amount?.toString() || '0') || 0),
+          0
+        )
         
         // 计算最早和最晚订单日期（羽毛球订单使用 service_date，租赁订单使用 start_date）
         const orderDates = uniqueOrders
@@ -1268,29 +1400,110 @@ export async function getCustomers(): Promise<Customer[]> {
 }
 
 export async function getCustomer(id: string): Promise<Customer | null> {
-  const { data, error } = await supabase
-    .from('customers')
-    .select(`
-      *,
-      orders:orders(id, order_number, start_date, end_date, total_amount, status, created_at)
-    `)
-    .eq('id', id)
-    .single()
-  
+  const { data: customer, error } = await supabaseDb.from('customers').select('*').eq('id', id).single()
+
   if (error) {
     if (error.code === 'PGRST116') return null // Not found
     throw error
   }
-  return data
+
+  const { data: allRows } = await supabaseDb.from('customers').select('id, name, phone, email').range(0, 9999)
+  let mergedIds =
+    allRows && allRows.length > 0
+      ? allRows
+          .filter((r) => rollupKeyForCustomerRow(r) === rollupKeyForCustomerRow(customer))
+          .map((r) => r.id)
+      : [customer.id]
+  if (!mergedIds.length) mergedIds = [customer.id]
+
+  const sameNameCount = new Map<string, number>()
+  for (const r of allRows || []) {
+    const n = normalizeCustomerNameForMatch(r.name)
+    sameNameCount.set(n, (sameNameCount.get(n) ?? 0) + 1)
+  }
+  const nameDupCount = sameNameCount.get(normalizeCustomerNameForMatch(customer.name)) ?? 1
+
+  const { data: idLinkedOrders, error: ordersError } = await supabaseDb
+    .from('orders')
+    .select(
+      'id, order_number, start_date, end_date, service_date, total_amount, status, created_at, order_type, customer_id'
+    )
+    .in('customer_id', mergedIds)
+    .order('created_at', { ascending: false })
+
+  if (ordersError) {
+    console.error('[getCustomer] orders fetch failed:', ordersError)
+  }
+
+  const { data: orphanRows, error: orphanErr } = await supabaseDb
+    .from('orders')
+    .select(
+      'id, order_number, start_date, end_date, service_date, total_amount, status, created_at, order_type, customer_id, customer_name, customer_phone'
+    )
+    .eq('order_type', 'badminton')
+    .is('customer_id', null)
+
+  if (orphanErr) {
+    console.error('[getCustomer] orphan badminton fetch failed:', orphanErr)
+  }
+  const orphanBadmintonOrders = orphanRows || []
+
+  const matchedOrphans = orphanBadmintonOrders.filter((o) =>
+    badmintonOrphanMatchesCustomer(o, customer, nameDupCount)
+  )
+
+  const mergedById = new Map<string, Record<string, unknown>>()
+  for (const o of idLinkedOrders || []) mergedById.set(o.id as string, o as Record<string, unknown>)
+  for (const o of matchedOrphans) mergedById.set(o.id as string, o as Record<string, unknown>)
+  const uniqueOrders = [...mergedById.values()].sort(
+    (a, b) =>
+      new Date(String(b.created_at || 0)).getTime() - new Date(String(a.created_at || 0)).getTime()
+  )
+
+  if (uniqueOrders.length > 0) {
+    customer.total_orders = uniqueOrders.length
+    customer.total_amount = uniqueOrders.reduce(
+      (sum, o) => sum + (parseFloat(String(o.total_amount ?? 0)) || 0),
+      0
+    )
+
+    const badmintonOrders = uniqueOrders.filter((o) => o.order_type === 'badminton')
+    customer.badminton_order_count = badmintonOrders.length
+    customer.badminton_total_amount = badmintonOrders.reduce(
+      (sum, o) => sum + (parseFloat(String(o.total_amount ?? 0)) || 0),
+      0
+    )
+
+    const orderDates = uniqueOrders
+      .map((o) => {
+        return o.order_type === 'badminton' && o.service_date ? String(o.service_date) : String(o.start_date || '')
+      })
+      .filter((d): d is string => !!d)
+      .sort()
+
+    if (orderDates.length > 0) {
+      customer.first_order_date = orderDates[0]!
+      customer.last_order_date = orderDates[orderDates.length - 1]!
+    }
+  } else {
+    customer.total_orders = 0
+    customer.total_amount = 0
+    customer.badminton_order_count = 0
+    customer.badminton_total_amount = 0
+  }
+
+  return { ...customer, orders: uniqueOrders as unknown as Order[] }
 }
 
 // 删除客户（安全删除：检查是否有关联订单）
 export async function deleteCustomer(id: string): Promise<void> {
-  // 1. 检查是否有关联订单
-  const { data: orders, error: ordersError } = await supabase
+  const mergedIds = await getMergedCustomerIdsRollup(id)
+
+  // 1. 检查是否有关联订单（与列表聚合一致：同键合并的档案下任一 customer_id 有订单即不可删）
+  const { data: orders, error: ordersError } = await supabaseDb
     .from('orders')
     .select('id, order_number, status')
-    .eq('customer_id', id)
+    .in('customer_id', mergedIds)
     .limit(1)
   
   if (ordersError) {
@@ -1299,10 +1512,10 @@ export async function deleteCustomer(id: string): Promise<void> {
   
   if (orders && orders.length > 0) {
     // 获取总订单数（用于错误消息）
-    const { count, error: countError } = await supabase
+    const { count, error: countError } = await supabaseDb
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .eq('customer_id', id)
+      .in('customer_id', mergedIds)
     
     if (countError) {
       // 如果获取总数失败，至少我们知道至少有一个订单
@@ -1313,7 +1526,7 @@ export async function deleteCustomer(id: string): Promise<void> {
   }
   
   // 2. 如果没有关联订单，执行删除
-  const { error } = await supabase
+  const { error } = await supabaseDb
     .from('customers')
     .delete()
     .eq('id', id)
@@ -1335,7 +1548,7 @@ export async function findOrCreateCustomer(
 
   // 1. 尝试通过手机号查找
   if (phone && phone.trim() !== '') {
-    const { data: customerByPhone, error: phoneError } = await supabase
+    const { data: customerByPhone, error: phoneError } = await supabaseDb
       .from('customers')
       .select('*')
       .eq('phone', phone.trim())
@@ -1348,7 +1561,7 @@ export async function findOrCreateCustomer(
     if (customerByPhone) {
       console.log(`[Customer] Found existing customer by phone: ${customerByPhone.name} (ID: ${customerByPhone.id})`)
       // 更新最后下单日期和订单数
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseDb
         .from('customers')
         .update({
           last_order_date: new Date().toISOString().split('T')[0],
@@ -1367,7 +1580,7 @@ export async function findOrCreateCustomer(
 
   // 2. 尝试通过邮箱查找
   if (email && email.trim() !== '') {
-    const { data: customerByEmail, error: emailError } = await supabase
+    const { data: customerByEmail, error: emailError } = await supabaseDb
       .from('customers')
       .select('*')
       .eq('email', email.trim())
@@ -1380,7 +1593,7 @@ export async function findOrCreateCustomer(
     if (customerByEmail) {
       console.log(`[Customer] Found existing customer by email: ${customerByEmail.name} (ID: ${customerByEmail.id})`)
       // 更新最后下单日期和订单数
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseDb
         .from('customers')
         .update({
           last_order_date: new Date().toISOString().split('T')[0],
@@ -1411,7 +1624,7 @@ export async function findOrCreateCustomer(
   
   console.log('[Customer] Creating new customer:', customerData)
   
-  const { data: newCustomer, error } = await supabase
+  const { data: newCustomer, error } = await supabaseDb
     .from('customers')
     .insert(customerData)
     .select()
@@ -1428,7 +1641,7 @@ export async function findOrCreateCustomer(
     
     // 如果创建失败（可能是唯一约束冲突），再次尝试查找
     if (phone && phone.trim() !== '') {
-      const { data: existing } = await supabase
+      const { data: existing } = await supabaseDb
         .from('customers')
         .select('*')
         .eq('phone', phone.trim())
@@ -1439,7 +1652,7 @@ export async function findOrCreateCustomer(
       }
     }
     if (email && email.trim() !== '') {
-      const { data: existing } = await supabase
+      const { data: existing } = await supabaseDb
         .from('customers')
         .select('*')
         .eq('email', email.trim())
@@ -1464,14 +1677,14 @@ export async function updateCustomerStats(
 ): Promise<void> {
   if (isNewOrder && orderAmount) {
     // 新增订单，累加金额
-    const { data: customer } = await supabase
+    const { data: customer } = await supabaseDb
       .from('customers')
       .select('total_amount')
       .eq('id', customerId)
       .single()
     
     if (customer) {
-      await supabase
+      await supabaseDb
         .from('customers')
         .update({ 
           total_amount: (customer.total_amount || 0) + orderAmount,
@@ -1487,7 +1700,7 @@ export async function updateCustomerStats(
 // ============================================
 
 export async function createOrderItem(item: Omit<OrderItem, 'id' | 'created_at' | 'updated_at' | 'item' | 'device'>): Promise<OrderItem> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('order_items')
     .insert(item)
     .select(`
@@ -1502,7 +1715,7 @@ export async function createOrderItem(item: Omit<OrderItem, 'id' | 'created_at' 
 }
 
 export async function updateOrderItem(id: string, item: Partial<Omit<OrderItem, 'id' | 'order_id' | 'created_at' | 'updated_at' | 'item' | 'device'>>): Promise<OrderItem> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('order_items')
     .update(item)
     .eq('id', id)
@@ -1518,7 +1731,7 @@ export async function updateOrderItem(id: string, item: Partial<Omit<OrderItem, 
 }
 
 export async function deleteOrderItem(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseDb
     .from('order_items')
     .delete()
     .eq('id', id)
@@ -1531,7 +1744,7 @@ export async function deleteOrderItem(id: string): Promise<void> {
 // ============================================
 
 export async function createThirdPartyRental(rental: Omit<ThirdPartyRental, 'id' | 'created_at' | 'updated_at'>): Promise<ThirdPartyRental> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('third_party_rentals')
     .insert(rental)
     .select()
@@ -1542,7 +1755,7 @@ export async function createThirdPartyRental(rental: Omit<ThirdPartyRental, 'id'
 }
 
 export async function updateThirdPartyRental(id: string, rental: Partial<Omit<ThirdPartyRental, 'id' | 'order_id' | 'created_at' | 'updated_at'>>): Promise<ThirdPartyRental> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('third_party_rentals')
     .update(rental)
     .eq('id', id)
@@ -1554,7 +1767,7 @@ export async function updateThirdPartyRental(id: string, rental: Partial<Omit<Th
 }
 
 export async function deleteThirdPartyRental(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseDb
     .from('third_party_rentals')
     .delete()
     .eq('id', id)
@@ -1567,7 +1780,7 @@ export async function deleteThirdPartyRental(id: string): Promise<void> {
 // ============================================
 
 export async function createShippingFee(fee: Omit<ShippingFee, 'id' | 'created_at' | 'updated_at'>): Promise<ShippingFee> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('shipping_fees')
     .insert(fee)
     .select()
@@ -1578,7 +1791,7 @@ export async function createShippingFee(fee: Omit<ShippingFee, 'id' | 'created_a
 }
 
 export async function updateShippingFee(id: string, fee: Partial<Omit<ShippingFee, 'id' | 'order_id' | 'created_at' | 'updated_at'>>): Promise<ShippingFee> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseDb
     .from('shipping_fees')
     .update(fee)
     .eq('id', id)
@@ -1590,7 +1803,7 @@ export async function updateShippingFee(id: string, fee: Partial<Omit<ShippingFe
 }
 
 export async function deleteShippingFee(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error } = await supabaseDb
     .from('shipping_fees')
     .delete()
     .eq('id', id)

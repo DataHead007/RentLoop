@@ -1,37 +1,32 @@
 import { NextResponse } from 'next/server'
 import { updateItem, getItem, createTransaction, getTransactions } from '@/lib/supabase/queries'
-import { supabase } from '@/lib/supabase/client'
+import { supabaseServer as supabase } from '@/lib/supabase/server'
+import { apiError } from '@/lib/api/response'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
     const { getItemWithStats } = await import('@/lib/supabase/queries')
     const item = await getItemWithStats(id)
     if (!item) {
-      return NextResponse.json(
-        { error: 'Item not found' },
-        { status: 404 }
-      )
+      return apiError('NOT_FOUND', 'Item not found', 404)
     }
     return NextResponse.json(item)
   } catch (error) {
     console.error('Error fetching item:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch item' },
-      { status: 500 }
-    )
+    return apiError('ITEM_FETCH_FAILED', 'Failed to fetch item', 500)
   }
 }
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
     
     // 获取旧资产信息（用于判断是否需要更新交易）
@@ -91,6 +86,7 @@ export async function PATCH(
               description: `${item.name} 设备购买`,
               transaction_date: item.purchase_date,
               auto_created: true,
+              business_line: 'rental',
             })
           }
         }
@@ -143,6 +139,7 @@ export async function PATCH(
               description: `${item.name} 设备出售`,
               transaction_date: item.sale_date!,
               auto_created: true,
+              business_line: 'rental',
             })
           }
         } catch (transactionError) {
@@ -176,9 +173,6 @@ export async function PATCH(
       errorMessage = error.message
     }
     
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    )
+    return apiError('ITEM_UPDATE_FAILED', errorMessage, 500)
   }
 }

@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Loader2, Plus, Trash2, ChevronsUpDown } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import {
@@ -17,7 +19,7 @@ import {
   BADMINTON_EXPENSE_CATEGORIES,
 } from '@/lib/constants/badminton'
 import { formatCurrency } from '@/lib/utils/format'
-import type { Order } from '@/lib/types/database'
+import type { Customer, Order } from '@/lib/types/database'
 import { localCache } from '@/lib/storage/localCache'
 
 type LineType = 'income' | 'expense'
@@ -32,9 +34,11 @@ interface LineRow {
 interface BadmintonOrderFormProps {
   orderId?: string
   onSuccess?: () => void
+  /** 加载失败、取消新建时返回的列表路径 */
+  listRedirectPath?: string
 }
 
-export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormProps) {
+export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/orders' }: BadmintonOrderFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(!!orderId)
   const [submitting, setSubmitting] = useState(false)
@@ -51,6 +55,33 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
   const [lines, setLines] = useState<LineRow[]>([
     { line_type: 'income', category: '', amount: '', notes: '' },
   ])
+  const createIdempotencyKeyRef = useRef<string | null>(null)
+
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customersLoading, setCustomersLoading] = useState(false)
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('')
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setCustomersLoading(true)
+      try {
+        const res = await fetch('/api/customers')
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled && Array.isArray(data)) setCustomers(data as Customer[])
+      } catch {
+        // 列表失败仍可手填客户
+      } finally {
+        if (!cancelled) setCustomersLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (orderId) {
@@ -70,6 +101,7 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
       setCustomer_name(order.customer_name)
       setCustomer_phone(order.customer_phone || '')
       setCustomer_email(order.customer_email || '')
+      setSelectedCustomerId(order.customer_id ?? null)
       setService_type((order as any).service_type || '')
       setLocation((order as any).location || '')
       setService_date((order as any).service_date || order.start_date)
@@ -91,7 +123,7 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
     } catch (err) {
       console.error(err)
       alert(err instanceof Error ? err.message : '加载订单失败')
-      router.push('/orders')
+      router.push(listRedirectPath)
     } finally {
       setLoading(false)
     }
@@ -103,7 +135,21 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
 
   const removeLine = (i: number) => {
     if (lines.length <= 1) return
+    const removedLine = lines[i]
+    if (!removedLine) return
     setLines((prev) => prev.filter((_, idx) => idx !== i))
+    toast('收支明细已删除', {
+      action: {
+        label: '撤销',
+        onClick: () => {
+          setLines((prev) => {
+            const restored = [...prev]
+            restored.splice(i, 0, removedLine)
+            return restored
+          })
+        },
+      },
+    })
   }
 
   const updateLine = (i: number, field: keyof LineRow, value: string) => {
@@ -122,6 +168,37 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
     .filter((l) => l.line_type === 'expense')
     .reduce((s, l) => s + (parseFloat(l.amount) || 0), 0)
   const netTotal = incomeTotal - expenseTotal
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearchQuery.trim().toLowerCase().replace(/\s+/g, '')
+    const list = !q
+      ? customers
+      : customers.filter((c) => {
+          const name = c.name.toLowerCase()
+          const phone = (c.phone || '').replace(/\s+/g, '')
+          const email = (c.email || '').toLowerCase()
+          return name.includes(q) || phone.includes(q) || email.includes(q)
+        })
+    return list.slice(0, 200)
+  }, [customers, customerSearchQuery])
+
+  const selectedCustomer = useMemo(
+    () => (selectedCustomerId ? customers.find((c) => c.id === selectedCustomerId) : undefined),
+    [customers, selectedCustomerId]
+  )
+
+  function applyCustomerSelection(c: Customer) {
+    setSelectedCustomerId(c.id)
+    setCustomer_name(c.name)
+    setCustomer_phone(c.phone?.trim() || '')
+    setCustomer_email(c.email?.trim() || '')
+    setCustomerPickerOpen(false)
+    setCustomerSearchQuery('')
+  }
+
+  function clearCustomerLink() {
+    setSelectedCustomerId(null)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -144,6 +221,15 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
 
     setSubmitting(true)
     try {
+      if (!orderId) {
+        if (!createIdempotencyKeyRef.current) {
+          createIdempotencyKeyRef.current =
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2, 14)}`
+        }
+      }
+
       const url = orderId ? `/api/orders/${orderId}` : '/api/orders'
       const method = orderId ? 'PATCH' : 'POST'
       const payload = orderId
@@ -151,6 +237,7 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
             customer_name: customer_name.trim(),
             customer_phone: customer_phone.trim() || null,
             customer_email: customer_email.trim() || null,
+            customer_id: selectedCustomerId,
             service_type,
             location: location.trim(),
             service_date,
@@ -165,6 +252,7 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
             customer_name: customer_name.trim(),
             customer_phone: customer_phone.trim() || null,
             customer_email: customer_email.trim() || null,
+            ...(selectedCustomerId ? { customer_id: selectedCustomerId } : {}),
             service_type,
             location: location.trim(),
             service_date,
@@ -173,6 +261,7 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
             status: 'pending',
             notes: notes.trim() || null,
             badminton_order_lines: validLines,
+            idempotency_key: createIdempotencyKeyRef.current!,
           }
 
       const res = await fetch(url, {
@@ -183,6 +272,9 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.error || (orderId ? '更新失败' : '创建失败'))
+      }
+      if (!orderId) {
+        createIdempotencyKeyRef.current = null
       }
       const order = await res.json()
       
@@ -227,12 +319,86 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="customer_name">客户姓名 *</Label>
-              <Input
-                id="customer_name"
-                value={customer_name}
-                onChange={(e) => setCustomer_name(e.target.value)}
-                placeholder="客户姓名"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="customer_name"
+                  className="flex-1 min-w-0"
+                  value={customer_name}
+                  onChange={(e) => setCustomer_name(e.target.value)}
+                  placeholder="可手填，或从列表选择已有客户"
+                />
+                <Popover open={customerPickerOpen} onOpenChange={setCustomerPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      title="从客户列表选择"
+                      disabled={customersLoading && customers.length === 0}
+                    >
+                      {customersLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ChevronsUpDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[min(100vw-2rem,22rem)] p-0" align="start">
+                    <div className="border-b p-2">
+                      <Input
+                        placeholder="搜索姓名、电话、邮箱…"
+                        value={customerSearchQuery}
+                        onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto p-1">
+                      {filteredCustomers.length === 0 ? (
+                        <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                          {customers.length === 0 ? '暂无客户档案，请直接输入姓名' : '无匹配客户'}
+                        </p>
+                      ) : (
+                        filteredCustomers.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className={cn(
+                              'flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left text-sm hover:bg-muted',
+                              selectedCustomerId === c.id && 'bg-muted'
+                            )}
+                            onClick={() => applyCustomerSelection(c)}
+                          >
+                            <span className="font-medium">{c.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {[c.phone, c.email].filter(Boolean).join(' · ') || '无电话/邮箱'}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              羽毛球累计净额 {formatCurrency(c.badminton_total_amount ?? 0)} ·{' '}
+                              {c.badminton_order_count ?? 0} 笔
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              {selectedCustomerId && (
+                <p className="text-xs text-muted-foreground">
+                  已关联客户档案
+                  {selectedCustomer
+                    ? ` · 历史羽毛球净额 ${formatCurrency(selectedCustomer.badminton_total_amount ?? 0)}（${
+                        selectedCustomer.badminton_order_count ?? 0
+                      } 笔，不含本单未保存金额）`
+                    : null}
+                </p>
+              )}
+              {selectedCustomerId ? (
+                <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={clearCustomerLink}>
+                  清除档案关联（改由系统按姓名/电话自动合并建档）
+                </Button>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="customer_phone">电话</Label>
@@ -438,7 +604,7 @@ export function BadmintonOrderForm({ orderId, onSuccess }: BadmintonOrderFormPro
         <Button
           type="button"
           variant="outline"
-          onClick={() => (orderId ? router.push(`/orders/${orderId}`) : router.push('/orders'))}
+          onClick={() => (orderId ? router.push(`/orders/${orderId}`) : router.push(listRedirectPath))}
         >
           取消
         </Button>
