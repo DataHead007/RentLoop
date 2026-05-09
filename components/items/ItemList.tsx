@@ -379,9 +379,9 @@ export function ItemList() {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">资产档案</h2>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">资产档案</h2>
             <p className="text-muted-foreground">管理你的租赁设备库存</p>
           </div>
         </div>
@@ -401,12 +401,12 @@ export function ItemList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">资产档案</h2>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">资产档案</h2>
           <p className="text-muted-foreground">管理你的租赁设备库存</p>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full shrink-0 sm:w-auto">
           <Link href="/items/new">
             <Plus className="mr-2 h-4 w-4" />
             新增资产

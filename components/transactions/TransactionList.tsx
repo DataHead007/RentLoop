@@ -380,12 +380,12 @@ export function TransactionList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">交易记录</h2>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">交易记录</h2>
           <p className="text-muted-foreground">管理所有收入和支出记录</p>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full shrink-0 sm:w-auto">
           <Link
             href={
               statsBusinessLine === 'all'

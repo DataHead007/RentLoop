@@ -55,6 +55,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
 
   /* 隐藏 number 的步进箭头，避免触摸板/触控误触改变数值 */

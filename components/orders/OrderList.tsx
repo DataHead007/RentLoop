@@ -514,9 +514,9 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             {module === 'rental' ? '租赁订单' : module === 'badminton' ? '羽毛球副业订单' : '全部订单'}
           </h2>
           <p className="text-muted-foreground">
@@ -549,16 +549,16 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:w-auto">
           {module === 'hub' && (
-            <div className="flex rounded-lg border bg-muted/50 p-0.5">
+            <div className="flex shrink-0 overflow-x-auto rounded-lg border bg-muted/50 p-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap">
               {(['all', 'rental', 'badminton'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setOrderTypeTab(tab)}
                   className={cn(
-                    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                    'shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                     orderTypeTab === tab ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
@@ -567,7 +567,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               ))}
             </div>
           )}
-          <Button asChild>
+          <Button asChild className="w-full shrink-0 sm:w-auto">
             <Link href={newOrderHref}>
               <Plus className="mr-2 h-4 w-4" />
               新建订单
@@ -577,16 +577,16 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
       </div>
 
       {/* 时间范围筛选 */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">时间范围：</span>
-        <div className="flex rounded-lg border bg-muted/50 p-0.5">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+        <span className="shrink-0 text-sm text-muted-foreground">时间范围：</span>
+        <div className="flex max-w-full overflow-x-auto rounded-lg border bg-muted/50 p-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap">
           {(['all', 'week', 'month', 'last_month', 'next_month', 'year'] as const).map((preset) => (
             <button
               key={preset}
               type="button"
               onClick={() => setDatePreset(preset)}
               className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                'shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 datePreset === preset ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
               )}
             >
