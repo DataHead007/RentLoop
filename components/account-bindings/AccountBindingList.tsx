@@ -11,6 +11,7 @@ import { Search, Gamepad2, Monitor, Calendar, Link as LinkIcon, X } from 'lucide
 import type { ItemAccountBinding } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatDateShort } from '@/lib/utils/format'
+import { AccountBindingListMobileCard } from './AccountBindingListMobileCard'
 
 export function AccountBindingList() {
   const [bindings, setBindings] = useState<ItemAccountBinding[]>([])
@@ -96,7 +97,7 @@ export function AccountBindingList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">账号绑定管理</h2>
@@ -138,12 +139,12 @@ export function AccountBindingList() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>绑定记录列表</CardTitle>
           <CardDescription>共 {filteredBindings.length} 条记录</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
           <div className="flex items-center gap-4 mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -175,102 +176,113 @@ export function AccountBindingList() {
               </div>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>游戏账号</TableHead>
-                  <TableHead>绑定设备</TableHead>
-                  <TableHead>绑定类型</TableHead>
-                  <TableHead>开始日期</TableHead>
-                  <TableHead>结束日期</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>关联订单</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="space-y-3 lg:hidden">
                 {filteredBindings.map((binding) => (
-                  <TableRow key={binding.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Gamepad2 className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <div>{binding.account_item?.name || '未知账号'}</div>
-                          {(binding.account_item?.category as any)?.name && (
-                            <div className="text-xs text-muted-foreground">
-                              {(binding.account_item?.category as any)?.name}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {binding.device_item ? (
-                        <div className="flex items-center gap-2">
-                          <Monitor className="h-4 w-4 text-muted-foreground" />
-                          <div>
-                            <div>{binding.device_item.name}</div>
-                            {binding.device_item.brand && binding.device_item.model && (
-                              <div className="text-xs text-muted-foreground">
-                                {binding.device_item.brand} {binding.device_item.model}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">单独租赁</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getBindingTypeBadgeVariant(binding.binding_type)}>
-                        {getBindingTypeLabel(binding.binding_type)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        {formatDateShort(new Date(binding.bind_start_date))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {binding.bind_end_date ? (
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          {formatDateShort(new Date(binding.bind_end_date))}
-                        </div>
-                      ) : (
-                        <Badge variant="outline" className="text-green-600">进行中</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {binding.bind_end_date === null ? (
-                        <Badge variant="default" className="bg-green-600">活跃</Badge>
-                      ) : (
-                        <Badge variant="secondary">已结束</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {binding.order_id ? (
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/orders/${binding.order_id}`}>
-                            查看订单
-                          </Link>
-                        </Button>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {binding.order_id && (
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/orders/${binding.order_id}`}>详情</Link>
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                  <AccountBindingListMobileCard key={binding.id} binding={binding} />
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+              <div className="hidden lg:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>游戏账号</TableHead>
+                      <TableHead>绑定设备</TableHead>
+                      <TableHead>绑定类型</TableHead>
+                      <TableHead>开始日期</TableHead>
+                      <TableHead>结束日期</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>关联订单</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredBindings.map((binding) => (
+                      <TableRow key={binding.id}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <Gamepad2 className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <div>{binding.account_item?.name || '未知账号'}</div>
+                              {(binding.account_item?.category as any)?.name && (
+                                <div className="text-xs text-muted-foreground">
+                                  {(binding.account_item?.category as any)?.name}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {binding.device_item ? (
+                            <div className="flex items-center gap-2">
+                              <Monitor className="h-4 w-4 text-muted-foreground" />
+                              <div>
+                                <div>{binding.device_item.name}</div>
+                                {binding.device_item.brand && binding.device_item.model && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {binding.device_item.brand} {binding.device_item.model}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">单独租赁</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getBindingTypeBadgeVariant(binding.binding_type)}>
+                            {getBindingTypeLabel(binding.binding_type)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            {formatDateShort(new Date(binding.bind_start_date))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {binding.bind_end_date ? (
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              {formatDateShort(new Date(binding.bind_end_date))}
+                            </div>
+                          ) : (
+                            <Badge variant="outline" className="text-green-600">
+                              进行中
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {binding.bind_end_date === null ? (
+                            <Badge variant="default" className="bg-green-600">
+                              活跃
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">已结束</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {binding.order_id ? (
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link href={`/orders/${binding.order_id}`}>查看订单</Link>
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {binding.order_id && (
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link href={`/orders/${binding.order_id}`}>详情</Link>
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

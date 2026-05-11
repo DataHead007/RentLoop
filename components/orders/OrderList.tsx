@@ -24,6 +24,7 @@ import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd, ge
 import { cn } from '@/lib/utils'
 import { getSiliconflowApiKey } from '@/lib/settings/storageKeys'
 import { ShippingDialog } from './ShippingDialog'
+import { OrderListMobileCard } from './OrderListMobileCard'
 import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
 
 type ShipSuggestion = {
@@ -513,7 +514,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
@@ -740,12 +741,35 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>订单列表</CardTitle>
             <CardDescription>共 {orders.length} 个订单</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
+            <div className="space-y-3 lg:hidden">
+              {sortedOrders.map((order) => (
+                <OrderListMobileCard
+                  key={order.id}
+                  order={order}
+                  isBadmintonOnlyView={isBadmintonOnlyView}
+                  getCategoryIcon={getCategoryIcon}
+                  shipSuggestions={shipSuggestions}
+                  shipSuggestionLoadingId={shipSuggestionLoadingId}
+                  fetchShipSuggestion={fetchShipSuggestion}
+                  setShippingDialogOrder={setShippingDialogOrder}
+                  setQuickCompleteOrder={setQuickCompleteOrder}
+                  setRollbackOrder={setRollbackOrder}
+                  setOrderToDelete={setOrderToDelete}
+                  setDeleteDialogOpen={setDeleteDialogOpen}
+                  getRowBackgroundClass={getRowBackgroundClass}
+                  getStatusBadgeVariant={getStatusBadgeVariant}
+                  getStatusBadgeClassName={getStatusBadgeClassName}
+                  getStatusLabel={getStatusLabel}
+                />
+              ))}
+            </div>
+            <div className="hidden lg:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -967,6 +991,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                 })}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}

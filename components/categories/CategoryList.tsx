@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Loader2 } from 'lucide-react'
+import { CategoryListMobileCard } from './CategoryListMobileCard'
 
 export function CategoryList() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -138,7 +139,7 @@ export function CategoryList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">品类管理</h2>
@@ -171,54 +172,63 @@ export function CategoryList() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>品类列表</CardTitle>
             <CardDescription>共 {categories.length} 个品类</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>品类名称</TableHead>
-                  <TableHead>描述</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {categories.map((category) => (
-                  <TableRow key={category.id}>
-                    <TableCell className="font-medium">{category.name}</TableCell>
-                    <TableCell>{category.description || '-'}</TableCell>
-                    <TableCell>
-                      {new Date(category.created_at).toLocaleDateString('zh-CN')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditClick(category)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setCategoryToDelete(category)
-                            setDeleteDialogOpen(true)
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
+          <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
+            <div className="space-y-3 lg:hidden">
+              {categories.map((category) => (
+                <CategoryListMobileCard
+                  key={category.id}
+                  category={category}
+                  onEdit={handleEditClick}
+                  onDelete={(c) => {
+                    setCategoryToDelete(c)
+                    setDeleteDialogOpen(true)
+                  }}
+                />
+              ))}
+            </div>
+            <div className="hidden lg:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>品类名称</TableHead>
+                    <TableHead>描述</TableHead>
+                    <TableHead>创建时间</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {categories.map((category) => (
+                    <TableRow key={category.id}>
+                      <TableCell className="font-medium">{category.name}</TableCell>
+                      <TableCell>{category.description || '-'}</TableCell>
+                      <TableCell>{new Date(category.created_at).toLocaleDateString('zh-CN')}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => handleEditClick(category)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setCategoryToDelete(category)
+                              setDeleteDialogOpen(true)
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}

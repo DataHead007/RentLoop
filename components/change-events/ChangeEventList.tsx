@@ -29,6 +29,7 @@ import Link from 'next/link'
 import { formatCurrency, formatDateShort } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
+import { ChangeEventListMobileCard } from './ChangeEventListMobileCard'
 
 interface ChangeEventStats {
   totalDeltaIncome: number
@@ -234,7 +235,7 @@ export function ChangeEventList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">变更追踪</h2>
@@ -447,90 +448,81 @@ export function ChangeEventList() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>变更记录</CardTitle>
             <CardDescription>共 {total} 条记录，显示最近 {events.length} 条</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[140px]">时间</TableHead>
-                  <TableHead className="w-[80px]">操作</TableHead>
-                  <TableHead>摘要</TableHead>
-                  <TableHead className="w-[100px]">类别</TableHead>
-                  <TableHead className="text-right w-[100px]">收入Δ</TableHead>
-                  <TableHead className="text-right w-[100px]">支出Δ</TableHead>
-                  <TableHead className="text-right w-[100px]">净利润Δ</TableHead>
-                  <TableHead className="w-[80px]">来源</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {events.map((event) => (
-                  <TableRow key={event.id}>
-                    <TableCell className="font-mono text-xs">
-                      {formatDateTime(event.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      {getActionBadge(event.action)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-sm">{event.summary || '-'}</span>
-                        {event.description && (
-                          <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {event.description}
-                          </span>
-                        )}
-                        <div className="flex gap-2 text-xs">
-                          {event.order_id && (
-                            <Link
-                              href={`/orders/${event.order_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              订单 {event.order_id.slice(0, 8)}...
-                            </Link>
-                          )}
-                          {event.item_id && (
-                            <Link
-                              href={`/items/${event.item_id}`}
-                              className="text-primary hover:underline"
-                            >
-                              资产 {event.item_id.slice(0, 8)}...
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{event.category || '-'}</span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatDelta(event.delta_income, 'income')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatDelta(event.delta_expense, 'expense')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatDelta(event.delta_net_profit, 'net')}
-                    </TableCell>
-                    <TableCell>
-                      {event.auto_created ? (
-                        <Badge variant="outline" className="text-xs gap-1">
-                          <Sparkles className="h-3 w-3" />
-                          自动
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-xs">
-                          手动
-                        </Badge>
-                      )}
-                    </TableCell>
+          <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
+            <div className="space-y-3 lg:hidden">
+              {events.map((event) => (
+                <ChangeEventListMobileCard key={event.id} event={event} />
+              ))}
+            </div>
+            <div className="hidden lg:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[140px]">时间</TableHead>
+                    <TableHead className="w-[80px]">操作</TableHead>
+                    <TableHead>摘要</TableHead>
+                    <TableHead className="w-[100px]">类别</TableHead>
+                    <TableHead className="w-[100px] text-right">收入Δ</TableHead>
+                    <TableHead className="w-[100px] text-right">支出Δ</TableHead>
+                    <TableHead className="w-[100px] text-right">净利润Δ</TableHead>
+                    <TableHead className="w-[80px]">来源</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {events.map((event) => (
+                    <TableRow key={event.id}>
+                      <TableCell className="font-mono text-xs">{formatDateTime(event.created_at)}</TableCell>
+                      <TableCell>{getActionBadge(event.action)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-sm">{event.summary || '-'}</span>
+                          {event.description && (
+                            <span className="max-w-[200px] truncate text-xs text-muted-foreground">
+                              {event.description}
+                            </span>
+                          )}
+                          <div className="flex gap-2 text-xs">
+                            {event.order_id && (
+                              <Link href={`/orders/${event.order_id}`} className="text-primary hover:underline">
+                                订单 {event.order_id.slice(0, 8)}...
+                              </Link>
+                            )}
+                            {event.item_id && (
+                              <Link href={`/items/${event.item_id}`} className="text-primary hover:underline">
+                                资产 {event.item_id.slice(0, 8)}...
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{event.category || '-'}</span>
+                      </TableCell>
+                      <TableCell className="text-right">{formatDelta(event.delta_income, 'income')}</TableCell>
+                      <TableCell className="text-right">{formatDelta(event.delta_expense, 'expense')}</TableCell>
+                      <TableCell className="text-right">{formatDelta(event.delta_net_profit, 'net')}</TableCell>
+                      <TableCell>
+                        {event.auto_created ? (
+                          <Badge variant="outline" className="gap-1 text-xs">
+                            <Sparkles className="h-3 w-3" />
+                            自动
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            手动
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}

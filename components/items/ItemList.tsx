@@ -25,6 +25,7 @@ import type { ItemWithStats } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
+import { ItemListMobileCard } from './ItemListMobileCard'
 
 export function ItemList() {
   const searchParams = useSearchParams()
@@ -400,7 +401,7 @@ export function ItemList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">资产档案</h2>
@@ -594,118 +595,125 @@ export function ItemList() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>资产列表</CardTitle>
             <CardDescription>共 {items.length} 件设备{filteredItems.length !== items.length ? `，筛选后显示 ${filteredItems.length} 件` : ''}</CardDescription>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[60px]">序号</TableHead>
-                  <TableHead>设备名称</TableHead>
-                  <TableHead>品类</TableHead>
-                  <TableHead>序列号</TableHead>
-                  <TableHead>购买成本</TableHead>
-                  <TableHead>总收入</TableHead>
-                  <TableHead>净收益</TableHead>
-                  <TableHead>ROI</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                  <TableHead className="text-right">删除</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredItems.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
-                      没有找到匹配的资产
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredItems.map((item, index) => {
-                  const roiPercent = item.roi || 0
-                  const roiDisplay = `${roiPercent >= 0 ? '+' : ''}${roiPercent.toFixed(1)}%`
-                  
-                    return (
-                      <TableRow key={item.id}>
-                        <TableCell className="text-muted-foreground">
-                          {index + 1}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {getCategoryIcon(item.category?.name) && (
-                            <span className="flex-shrink-0">
-                              {getCategoryIcon(item.category?.name)}
-                            </span>
-                          )}
-                          <div>
-                            <div>{item.name}</div>
-                            {item.brand && item.model && (
-                              <div className="text-sm text-muted-foreground">
-                                {item.brand} {item.model}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{item.category?.name || '-'}</TableCell>
-                      <TableCell>
-                        <code className="text-xs bg-muted px-2 py-1 rounded">
-                          {item.serial_number || '未设置'}
-                        </code>
-                      </TableCell>
-                      <TableCell>{formatCurrency(item.purchase_price)}</TableCell>
-                      <TableCell>{formatCurrency(item.total_revenue || 0)}</TableCell>
-                      <TableCell className={cn(
-                        "font-medium",
-                        (item.net_profit || 0) >= 0 ? "text-green-600" : "text-red-600"
-                      )}>
-                        {formatCurrency(item.net_profit || 0)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-2 min-w-[150px]">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className={roiPercent >= 0 ? 'text-green-600' : 'text-red-600'}>
-                              {roiDisplay}
-                            </span>
-                            <TrendingUp className={`h-4 w-4 ${roiPercent >= 0 ? 'text-green-600' : 'text-red-600 rotate-180'}`} />
-                          </div>
-                          <Progress 
-                            value={Math.min(Math.max(roiPercent, 0), 100)} 
-                            className="h-2"
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusBadgeVariant(item.status)}>
-                          {getStatusLabel(item.status)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/items/${item.id}`}>查看</Link>
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setItemToDelete(item)
-                            setDeleteDialogOpen(true)
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
+          <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
+            {filteredItems.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground">没有找到匹配的资产</div>
+            ) : (
+              <>
+                <div className="space-y-3 lg:hidden">
+                  {filteredItems.map((item, index) => (
+                    <ItemListMobileCard
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      getCategoryIcon={getCategoryIcon}
+                      getStatusBadgeVariant={getStatusBadgeVariant}
+                      getStatusLabel={getStatusLabel}
+                      onDelete={(it) => {
+                        setItemToDelete(it)
+                        setDeleteDialogOpen(true)
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="hidden lg:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[60px]">序号</TableHead>
+                        <TableHead>设备名称</TableHead>
+                        <TableHead>品类</TableHead>
+                        <TableHead>序列号</TableHead>
+                        <TableHead>购买成本</TableHead>
+                        <TableHead>总收入</TableHead>
+                        <TableHead>净收益</TableHead>
+                        <TableHead>ROI</TableHead>
+                        <TableHead>状态</TableHead>
+                        <TableHead className="text-right">操作</TableHead>
+                        <TableHead className="text-right">删除</TableHead>
                       </TableRow>
-                    )
-                  })
-                )}
-              </TableBody>
-            </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredItems.map((item, index) => {
+                        const roiPercent = item.roi || 0
+                        const roiDisplay = `${roiPercent >= 0 ? '+' : ''}${roiPercent.toFixed(1)}%`
+
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {getCategoryIcon(item.category?.name) && (
+                                  <span className="flex-shrink-0">{getCategoryIcon(item.category?.name)}</span>
+                                )}
+                                <div>
+                                  <div>{item.name}</div>
+                                  {item.brand && item.model && (
+                                    <div className="text-sm text-muted-foreground">
+                                      {item.brand} {item.model}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{item.category?.name || '-'}</TableCell>
+                            <TableCell>
+                              <code className="rounded bg-muted px-2 py-1 text-xs">{item.serial_number || '未设置'}</code>
+                            </TableCell>
+                            <TableCell>{formatCurrency(item.purchase_price)}</TableCell>
+                            <TableCell>{formatCurrency(item.total_revenue || 0)}</TableCell>
+                            <TableCell
+                              className={cn(
+                                'font-medium',
+                                (item.net_profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                              )}
+                            >
+                              {formatCurrency(item.net_profit || 0)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="min-w-[150px] space-y-2">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className={roiPercent >= 0 ? 'text-green-600' : 'text-red-600'}>{roiDisplay}</span>
+                                  <TrendingUp
+                                    className={`h-4 w-4 ${roiPercent >= 0 ? 'text-green-600' : 'rotate-180 text-red-600'}`}
+                                  />
+                                </div>
+                                <Progress value={Math.min(Math.max(roiPercent, 0), 100)} className="h-2" />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={getStatusBadgeVariant(item.status)}>{getStatusLabel(item.status)}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="ghost" size="sm" asChild>
+                                <Link href={`/items/${item.id}`}>查看</Link>
+                              </Button>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setItemToDelete(item)
+                                  setDeleteDialogOpen(true)
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}

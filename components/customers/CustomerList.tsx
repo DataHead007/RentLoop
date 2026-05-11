@@ -11,6 +11,7 @@ import { User, Search, Phone, Mail, Calendar, DollarSign, Package, Trash2 } from
 import type { Customer } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort } from '@/lib/utils/format'
+import { CustomerListMobileCard } from './CustomerListMobileCard'
 
 export function CustomerList() {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -183,7 +184,7 @@ export function CustomerList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">客户管理</h2>
@@ -319,12 +320,12 @@ export function CustomerList() {
       )}
 
       {/* 搜索框 */}
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>客户列表</CardTitle>
           <CardDescription>搜索和查看客户信息</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <div className="flex-1">
@@ -353,96 +354,110 @@ export function CustomerList() {
                 </p>
               </div>
             ) : (
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>客户姓名</TableHead>
-                      <TableHead>联系方式</TableHead>
-                      <TableHead>订单数</TableHead>
-                      <TableHead>累计消费</TableHead>
-                      <TableHead>首次下单</TableHead>
-                      <TableHead>最近下单</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredCustomers.map((customer) => (
-                      <TableRow key={customer.id}>
-                        <TableCell className="font-medium">{customer.name}</TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {customer.phone && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <Phone className="h-3 w-3 text-muted-foreground" />
-                                <span>{customer.phone}</span>
+              <>
+                <div className="space-y-3 lg:hidden">
+                  {filteredCustomers.map((customer) => (
+                    <CustomerListMobileCard
+                      key={customer.id}
+                      customer={customer}
+                      deletingCustomerId={deletingCustomerId}
+                      onDelete={handleDeleteCustomer}
+                    />
+                  ))}
+                </div>
+                <div className="hidden lg:block">
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>客户姓名</TableHead>
+                          <TableHead>联系方式</TableHead>
+                          <TableHead>订单数</TableHead>
+                          <TableHead>累计消费</TableHead>
+                          <TableHead>首次下单</TableHead>
+                          <TableHead>最近下单</TableHead>
+                          <TableHead className="text-right">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredCustomers.map((customer) => (
+                          <TableRow key={customer.id}>
+                            <TableCell className="font-medium">{customer.name}</TableCell>
+                            <TableCell>
+                              <div className="space-y-1">
+                                {customer.phone && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Phone className="h-3 w-3 text-muted-foreground" />
+                                    <span>{customer.phone}</span>
+                                  </div>
+                                )}
+                                {customer.email && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <Mail className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">{customer.email}</span>
+                                  </div>
+                                )}
+                                {!customer.phone && !customer.email && (
+                                  <span className="text-sm text-muted-foreground">无联系方式</span>
+                                )}
                               </div>
-                            )}
-                            {customer.email && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <Mail className="h-3 w-3 text-muted-foreground" />
-                                <span className="text-muted-foreground">{customer.email}</span>
-                              </div>
-                            )}
-                            {!customer.phone && !customer.email && (
-                              <span className="text-sm text-muted-foreground">无联系方式</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">{customer.total_orders || 0}</Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {formatCurrency(customer.total_amount || 0)}
-                        </TableCell>
-                        <TableCell>
-                          {customer.first_order_date ? (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Calendar className="h-3 w-3 text-muted-foreground" />
-                              <span>{formatDateShort(new Date(customer.first_order_date))}</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {customer.last_order_date ? (
-                            <div className="flex items-center gap-2 text-sm">
-                              <Calendar className="h-3 w-3 text-muted-foreground" />
-                              <span>{formatDateShort(new Date(customer.last_order_date))}</span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button asChild variant="outline" size="sm">
-                              <Link href={`/customers/${customer.id}`}>查看详情</Link>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteCustomer(customer)}
-                              disabled={deletingCustomerId === customer.id}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              {deletingCustomerId === customer.id ? (
-                                '删除中...'
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary">{customer.total_orders || 0}</Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {formatCurrency(customer.total_amount || 0)}
+                            </TableCell>
+                            <TableCell>
+                              {customer.first_order_date ? (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                                  <span>{formatDateShort(new Date(customer.first_order_date))}</span>
+                                </div>
                               ) : (
-                                <>
-                                  <Trash2 className="h-4 w-4 mr-1" />
-                                  删除
-                                </>
+                                <span className="text-muted-foreground text-sm">-</span>
                               )}
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                            </TableCell>
+                            <TableCell>
+                              {customer.last_order_date ? (
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                                  <span>{formatDateShort(new Date(customer.last_order_date))}</span>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button asChild variant="outline" size="sm">
+                                  <Link href={`/customers/${customer.id}`}>查看详情</Link>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteCustomer(customer)}
+                                  disabled={deletingCustomerId === customer.id}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  {deletingCustomerId === customer.id ? (
+                                    '删除中...'
+                                  ) : (
+                                    <>
+                                      <Trash2 className="h-4 w-4 mr-1" />
+                                      删除
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </CardContent>

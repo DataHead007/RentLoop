@@ -24,6 +24,7 @@ import { formatCurrency, formatDateShort } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
+import { TransactionListMobileCard } from './TransactionListMobileCard'
 
 interface TransactionStats {
   totalIncome: number
@@ -379,7 +380,7 @@ export function TransactionList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">交易记录</h2>
@@ -642,12 +643,25 @@ export function TransactionList() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>交易列表</CardTitle>
             <CardDescription>共 {transactions.length} 笔交易</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
+            <div className="space-y-3 lg:hidden">
+              {transactions.map((transaction) => (
+                <TransactionListMobileCard
+                  key={transaction.id}
+                  transaction={transaction}
+                  onDelete={(t) => {
+                    setTransactionToDelete(t)
+                    setDeleteDialogOpen(true)
+                  }}
+                />
+              ))}
+            </div>
+            <div className="hidden lg:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -722,6 +736,7 @@ export function TransactionList() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}
