@@ -415,7 +415,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-6" noValidate>
       <Card>
         <CardHeader>
           <CardTitle>{itemId ? '编辑设备信息' : '设备基本信息'}</CardTitle>
@@ -569,7 +569,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="brand">品牌</Label>
               <Input
@@ -665,7 +665,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
           <CardTitle>购买信息</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="purchase_price">购买价格 (¥) *</Label>
               <Input
@@ -794,7 +794,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
           <CardDescription>如果资产已出售，请填写出售信息</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="sold_price">出售价格 (¥)</Label>
               <Input
@@ -952,7 +952,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="income_amount">金额 (¥) *</Label>
                       <Input
@@ -1053,16 +1053,17 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
         </Card>
       )}
 
-      <div className="flex justify-end gap-4">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:gap-4">
         <Button
           type="button"
           variant="outline"
+          className="w-full sm:w-auto"
           onClick={() => router.back()}
           disabled={loading}
         >
           取消
         </Button>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading} className="w-full sm:w-auto">
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {itemId ? '更新' : '保存'}
         </Button>

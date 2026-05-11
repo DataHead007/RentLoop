@@ -309,14 +309,14 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>客户与服务信息</CardTitle>
           <CardDescription>填写客户及本次服务的基本信息</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="customer_name">客户姓名 *</Label>
               <div className="flex gap-2">
@@ -420,7 +420,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
               placeholder="email@example.com"
             />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>服务类型 *</Label>
               <Select value={service_type} onValueChange={setService_type}>
@@ -446,7 +446,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
               />
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="service_date">服务日期 *</Label>
               <Input
@@ -514,8 +514,8 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
         </CardHeader>
         <CardContent className="space-y-4">
           {lines.map((line, i) => (
-            <div key={i} className="flex flex-wrap items-end gap-2 rounded-lg border p-3">
-              <div className="w-24 space-y-1">
+            <div key={i} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
+              <div className="w-full space-y-1 sm:w-24 sm:shrink-0">
                 <Label className="text-xs">类型</Label>
                 <Select
                   value={line.line_type}
@@ -530,7 +530,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
                   </SelectContent>
                 </Select>
               </div>
-              <div className="w-36 space-y-1">
+              <div className="w-full space-y-1 sm:w-36 sm:shrink-0">
                 <Label className="text-xs">类别</Label>
                 <Select
                   value={line.category}
@@ -554,7 +554,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
                   </SelectContent>
                 </Select>
               </div>
-              <div className="w-28 space-y-1">
+              <div className="w-full space-y-1 sm:w-28 sm:shrink-0">
                 <Label className="text-xs">金额</Label>
                 <Input
                   type="number"
@@ -565,7 +565,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
                   placeholder="0"
                 />
               </div>
-              <div className="flex-1 min-w-[120px] space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <Label className="text-xs">备注</Label>
                 <Input
                   value={line.notes}
@@ -577,6 +577,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
                 type="button"
                 variant="ghost"
                 size="icon"
+                className="self-end sm:self-auto"
                 onClick={() => removeLine(i)}
                 disabled={lines.length <= 1}
               >
@@ -596,17 +597,18 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
         </CardContent>
       </Card>
 
-      <div className="flex gap-4">
-        <Button type="submit" disabled={submitting}>
-          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {orderId ? '更新订单' : '创建羽毛球订单'}
-        </Button>
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:gap-4">
         <Button
           type="button"
           variant="outline"
+          className="w-full sm:w-auto"
           onClick={() => (orderId ? router.push(`/orders/${orderId}`) : router.push(listRedirectPath))}
         >
           取消
+        </Button>
+        <Button type="submit" disabled={submitting} className="w-full sm:w-auto">
+          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {orderId ? '更新订单' : '创建羽毛球订单'}
         </Button>
       </div>
     </form>

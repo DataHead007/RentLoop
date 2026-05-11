@@ -136,7 +136,7 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
     : { days: 0, totalAmount: 0 }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>订单信息</CardTitle>
@@ -165,7 +165,7 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="start_date">开始日期 *</Label>
               <Popover>
@@ -232,7 +232,7 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="daily_rate">日租金 (¥) *</Label>
               <Input
@@ -289,7 +289,7 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="customer_phone">联系电话</Label>
               <Input
@@ -325,16 +325,17 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-4">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:gap-4">
         <Button
           type="button"
           variant="outline"
+          className="w-full sm:w-auto"
           onClick={() => router.back()}
           disabled={loading}
         >
           取消
         </Button>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading} className="w-full sm:w-auto">
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           创建订单
         </Button>

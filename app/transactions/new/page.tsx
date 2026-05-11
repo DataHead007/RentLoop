@@ -15,7 +15,7 @@ export default async function NewTransactionPage({
       : undefined
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto min-w-0 w-full max-w-3xl px-4 py-8 sm:px-6">
       <TransactionForm itemId={itemId} orderId={orderId} defaultBusinessLine={defaultBusinessLine} />
     </div>
   )

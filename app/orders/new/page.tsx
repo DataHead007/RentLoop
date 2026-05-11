@@ -14,7 +14,7 @@ export default function NewOrderPage() {
 
   if (orderType === null) {
     return (
-      <div className="container mx-auto py-8 max-w-2xl">
+      <div className="container mx-auto min-w-0 w-full max-w-2xl px-4 py-8 sm:px-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold tracking-tight">新建订单</h1>
           <p className="text-muted-foreground">选择订单类型</p>
@@ -64,8 +64,8 @@ export default function NewOrderPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-5xl">
-      <div className="mb-6 flex items-center gap-4">
+    <div className="container mx-auto min-w-0 w-full max-w-5xl px-4 py-8 sm:px-6">
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <button
           type="button"
           onClick={() => setOrderType(null)}

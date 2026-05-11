@@ -3,7 +3,7 @@ import { BadmintonOrderForm } from '@/components/orders/BadmintonOrderForm'
 
 export default function NewBadmintonOrderPage() {
   return (
-    <div className="container mx-auto max-w-5xl py-8">
+    <div className="container mx-auto min-w-0 w-full max-w-5xl px-4 py-8 sm:px-6">
       <div className="mb-6">
         <Link href="/badminton/orders" className="text-sm text-muted-foreground hover:underline">
           ← 返回羽毛球订单

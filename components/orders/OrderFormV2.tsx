@@ -1081,7 +1081,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
       {/* 客户信息和租赁日期 */}
       <Card>
         <CardHeader>
@@ -1211,6 +1211,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
                     type="button"
                     variant="outline"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={() => document.getElementById('quick-input-file')?.click()}
                   >
                     选择图片
@@ -1219,6 +1220,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
               )}
               <Button
                 type="button"
+                className="w-full sm:w-auto"
                 onClick={handleParseOrder}
                 disabled={isParsingOrder || (!quickInputText?.trim() && !quickInputImage)}
               >
@@ -1243,7 +1245,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="customer_phone">联系电话</Label>
               <Input
@@ -1278,7 +1280,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="start_date">开始日期 *</Label>
               <Popover>
@@ -1361,22 +1363,22 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <CardTitle>订单项（设备/配件/游戏账号）*</CardTitle>
                 <CardDescription>添加要出租的设备、配件或游戏账号</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
                 {formData.order_items.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">批量费率：</span>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                    <span className="shrink-0 text-sm text-muted-foreground">批量费率：</span>
                     <Select
                       onValueChange={(v) => {
                         const rate = v === 'auto' ? null : v === '0' ? 0 : v === '0.6' ? 0.006 : v === '1.6' ? 0.016 : 0.01
                         applyBatchFeeRate(rate)
                       }}
                     >
-                      <SelectTrigger className="w-36">
+                      <SelectTrigger className="min-w-0 w-full sm:w-36">
                         <SelectValue placeholder="选择费率" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1389,7 +1391,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
                     </Select>
                   </div>
                 )}
-                <Button type="button" variant="outline" size="sm" onClick={addOrderItem}>
+                <Button type="button" variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={addOrderItem}>
                   <Plus className="mr-2 h-4 w-4" />
                   添加
                 </Button>
@@ -1413,7 +1415,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
               const calculatedDailyRate = calculateDailyRate(item.subtotal, days)
 
               return (
-                <div key={index} data-order-item-index={index} className="border rounded-lg p-4 space-y-4">
+                <div key={index} data-order-item-index={index} className="space-y-4 rounded-lg border p-3 sm:p-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium">订单项 #{index + 1}</h4>
                     <div className="flex items-center gap-1">
@@ -1593,8 +1595,8 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                     </div>
                   )}
 
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="min-w-0 space-y-2">
                       <Label>总租金 (¥) *</Label>
                       <Input
                         type="number"
@@ -1612,7 +1614,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                       </p>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <Label>实际租金 (¥)</Label>
                       <div className="h-10 px-3 py-2 rounded-md border bg-muted flex items-center font-medium">
                         {formatCurrency(calculateNetAmount(item.subtotal || 0, item.fee_rate) * item.quantity)}
@@ -1622,7 +1624,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                       </p>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <Label>数量</Label>
                       <Input
                         type="number"
@@ -1636,7 +1638,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <Label>押金 (¥)</Label>
                       <Input
                         type="number"
@@ -1655,7 +1657,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                   {/* 手续费率选择 */}
                   <div className="space-y-2">
                     <Label>手续费率</Label>
-                    <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                       <Select
                         value={item.fee_rate === null ? 'auto' : item.fee_rate === 0 ? '0' : item.fee_rate === 0.006 ? '0.6' : item.fee_rate === 0.016 ? '1.6' : 'custom'}
                         onValueChange={(value) => {
@@ -1674,7 +1676,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                           updateOrderItem(index, { fee_rate: feeRate })
                         }}
                       >
-                        <SelectTrigger className="w-56">
+                        <SelectTrigger className="min-w-0 w-full sm:w-56">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1697,7 +1699,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                             step="0.0001"
                             min="0"
                             max="100"
-                            className="w-32"
+                            className="min-w-0 w-full max-w-[10rem] sm:w-32"
                             value={((item.fee_rate || 0) * 100).toFixed(4)}
                             onChange={(e) => {
                               const percentValue = parseFloat(e.target.value) || 0
@@ -1724,14 +1726,14 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="min-w-0 space-y-2">
                       <Label>总租金小计</Label>
                       <div className="h-10 px-3 py-2 rounded-md border bg-muted flex items-center font-medium">
                         {formatCurrency(item.subtotal * item.quantity)}
                       </div>
                     </div>
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <Label>实际租金小计</Label>
                       <div className="h-10 px-3 py-2 rounded-md border bg-muted flex items-center font-medium text-green-600">
                         {formatCurrency(calculateNetAmount(item.subtotal || 0, item.fee_rate) * item.quantity)}
@@ -1781,21 +1783,21 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
       <Collapsible open={openThirdParty} onOpenChange={setOpenThirdParty}>
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CollapsibleTrigger asChild>
-                <button type="button" className="flex flex-1 items-center gap-2 text-left">
+                <button type="button" className="flex flex-1 items-center gap-2 text-left min-w-0">
                   {openThirdParty ? (
                     <ChevronUp className="h-4 w-4 shrink-0" />
                   ) : (
                     <ChevronDown className="h-4 w-4 shrink-0" />
                   )}
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle>第三方租赁 ({formData.third_party_rentals.length})</CardTitle>
                     <CardDescription>记录从淘宝等平台租的游戏</CardDescription>
                   </div>
                 </button>
               </CollapsibleTrigger>
-              <Button type="button" variant="outline" size="sm" onClick={addThirdPartyRental}>
+              <Button type="button" variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={addThirdPartyRental}>
                 <Plus className="mr-2 h-4 w-4" />
                 添加
               </Button>
@@ -1804,7 +1806,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
           <CollapsibleContent>
         <CardContent className="space-y-4">
           {formData.third_party_rentals.map((rental, index) => (
-            <div key={index} className="border rounded-lg p-4 space-y-4">
+            <div key={index} className="space-y-4 rounded-lg border p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">第三方租赁 #{index + 1}</h4>
                 <Button
@@ -1817,7 +1819,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>游戏名称 *</Label>
                   <Input
@@ -1841,7 +1843,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>租赁成本 (¥) *</Label>
                   <Input
@@ -1873,7 +1875,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label>供应商</Label>
                   <Select
@@ -1937,21 +1939,21 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
       <Collapsible open={openShipping} onOpenChange={setOpenShipping}>
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CollapsibleTrigger asChild>
-                <button type="button" className="flex flex-1 items-center gap-2 text-left">
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left">
                   {openShipping ? (
                     <ChevronUp className="h-4 w-4 shrink-0" />
                   ) : (
                     <ChevronDown className="h-4 w-4 shrink-0" />
                   )}
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle>物流费用 ({formData.shipping_fees.length})</CardTitle>
                     <CardDescription>记录发货、退货等物流费用</CardDescription>
                   </div>
                 </button>
               </CollapsibleTrigger>
-              <Button type="button" variant="outline" size="sm" onClick={addShippingFee}>
+              <Button type="button" variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={addShippingFee}>
                 <Plus className="mr-2 h-4 w-4" />
                 添加
               </Button>
@@ -1960,7 +1962,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
           <CollapsibleContent>
         <CardContent className="space-y-4">
           {formData.shipping_fees.map((fee, index) => (
-            <div key={index} className="border rounded-lg p-4 space-y-4">
+            <div key={index} className="space-y-4 rounded-lg border p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">物流费用 #{index + 1}</h4>
                 <Button
@@ -1973,7 +1975,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>类型 *</Label>
                   <Select
@@ -2009,7 +2011,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>物流公司</Label>
                   <Input
@@ -2057,26 +2059,26 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
             <CardTitle>金额汇总</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex justify-between text-lg">
-              <span>总租金：</span>
-              <span className="font-bold">{formatCurrency(totalAmount)}</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-base sm:text-lg">
+              <span className="min-w-0 shrink text-muted-foreground">总租金</span>
+              <span className="font-bold tabular-nums">{formatCurrency(totalAmount)}</span>
             </div>
             {totalShippingCost > 0 && (
-              <div className="flex justify-between text-lg">
-                <span>物流费用：</span>
-                <span className="font-medium">{formatCurrency(totalShippingCost)}</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-base sm:text-lg">
+                <span className="min-w-0 shrink text-muted-foreground">物流费用</span>
+                <span className="font-medium tabular-nums">{formatCurrency(totalShippingCost)}</span>
               </div>
             )}
             {totalThirdPartyCost > 0 && (
-              <div className="flex justify-between text-lg">
-                <span>第三方转租成本：</span>
-                <span className="font-medium">{formatCurrency(totalThirdPartyCost)}</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-base sm:text-lg">
+                <span className="min-w-0 shrink text-muted-foreground">第三方转租成本</span>
+                <span className="font-medium tabular-nums">{formatCurrency(totalThirdPartyCost)}</span>
               </div>
             )}
             {totalThirdPartySupplierDeposit > 0 && (
-              <div className="flex justify-between text-lg">
-                <span>付供应商押金（可退）：</span>
-                <span className="font-medium text-muted-foreground">{formatCurrency(totalThirdPartySupplierDeposit)}</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-base sm:text-lg">
+                <span className="min-w-0 shrink text-muted-foreground">付供应商押金（可退）</span>
+                <span className="font-medium tabular-nums text-muted-foreground">{formatCurrency(totalThirdPartySupplierDeposit)}</span>
               </div>
             )}
             {(totalThirdPartyCost > 0 || totalThirdPartySupplierDeposit > 0) && (
@@ -2084,9 +2086,9 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                 可退押金不计入客户总押金，也不计入订单列表「利润」成本
               </p>
             )}
-            <div className="flex justify-between text-lg">
-              <span>总押金（客户）：</span>
-              <span className="font-bold">{formatCurrency(totalDeposit)}</span>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 border-t pt-2 text-base sm:text-lg">
+              <span className="min-w-0 shrink font-medium">总押金（客户）</span>
+              <span className="font-bold tabular-nums">{formatCurrency(totalDeposit)}</span>
             </div>
           </CardContent>
         </Card>
@@ -2114,16 +2116,17 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
       </Collapsible>
 
       {/* 提交按钮 */}
-      <div className="flex justify-end gap-4">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button
           type="button"
           variant="outline"
+          className="w-full sm:w-auto"
           onClick={() => router.back()}
           disabled={loading}
         >
           取消
         </Button>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading} className="w-full sm:w-auto">
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {orderId ? '更新订单' : '创建订单'}
         </Button>

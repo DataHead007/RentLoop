@@ -412,8 +412,8 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="business_line">业务线 *</Label>
               <Select
@@ -596,13 +596,13 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
             </div>
           )}
 
-          <div className="flex gap-4">
-            <Button type="submit" disabled={submitting}>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:gap-4">
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => router.back()}>
+              取消
+            </Button>
+            <Button type="submit" disabled={submitting} className="w-full sm:w-auto">
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {transactionId ? '保存修改' : '创建交易记录'}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => router.back()}>
-              取消
             </Button>
           </div>
         </form>

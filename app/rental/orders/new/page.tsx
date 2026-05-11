@@ -3,7 +3,7 @@ import { OrderFormV2 } from '@/components/orders/OrderFormV2'
 
 export default function NewRentalOrderPage() {
   return (
-    <div className="container mx-auto max-w-5xl py-8">
+    <div className="container mx-auto min-w-0 w-full max-w-5xl px-4 py-8 sm:px-6">
       <div className="mb-6">
         <Link href="/rental/orders" className="text-sm text-muted-foreground hover:underline">
           ← 返回租赁订单
