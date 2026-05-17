@@ -14,9 +14,9 @@ export default function NewOrderPage() {
 
   if (orderType === null) {
     return (
-      <div className="container mx-auto min-w-0 w-full max-w-2xl px-4 py-8 sm:px-6">
+      <div className="container mx-auto min-w-0 w-full max-w-2xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">新建订单</h1>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">新建订单</h1>
           <p className="text-muted-foreground">选择订单类型</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -64,7 +64,7 @@ export default function NewOrderPage() {
   }
 
   return (
-    <div className="container mx-auto min-w-0 w-full max-w-5xl px-4 py-8 sm:px-6">
+    <div className="container mx-auto min-w-0 w-full max-w-5xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <button
           type="button"
@@ -74,7 +74,7 @@ export default function NewOrderPage() {
           ← 更换类型
         </button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
             {orderType === 'rental' ? '新建租赁订单' : '新建羽毛球订单'}
           </h1>
           <p className="text-muted-foreground">

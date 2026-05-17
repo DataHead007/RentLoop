@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Trash2, TrendingUp } from 'lucide-react'
-import { formatCurrency } from '@/lib/utils/format'
+import { clampPaybackForBar, formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 
 type ItemListMobileCardProps = {
@@ -27,8 +27,8 @@ export function ItemListMobileCard({
   getStatusLabel,
   onDelete,
 }: ItemListMobileCardProps) {
-  const roiPercent = item.roi || 0
-  const roiDisplay = `${roiPercent >= 0 ? '+' : ''}${roiPercent.toFixed(1)}%`
+  const paybackPct = item.payback_progress_pct ?? 0
+  const paybackDisplay = `${paybackPct.toFixed(1)}%`
   const icon = getCategoryIcon(item.category?.name)
 
   return (
@@ -90,11 +90,37 @@ export function ItemListMobileCard({
       </dl>
 
       <div className="mt-3 border-t border-border/60 pt-3">
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <span className={roiPercent >= 0 ? 'text-green-600' : 'text-red-600'}>{roiDisplay} ROI</span>
-          <TrendingUp className={cn('h-4 w-4 shrink-0', roiPercent >= 0 ? 'text-green-600' : 'rotate-180 text-red-600')} />
+        <div className="flex items-start justify-between gap-2 text-sm">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+            <span
+              className={cn(
+                'font-medium tabular-nums',
+                paybackPct >= 100 ? 'text-green-600' : paybackPct > 0 ? 'text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              {paybackDisplay}
+            </span>
+            {paybackPct >= 100 ? (
+              <Badge
+                variant="secondary"
+                className="shrink-0 px-1.5 py-0 text-[10px] font-normal text-green-700"
+              >
+                已回本
+              </Badge>
+            ) : null}
+            <span className="text-muted-foreground">回本</span>
+          </div>
+          <TrendingUp
+            className={cn(
+              'mt-0.5 h-4 w-4 shrink-0',
+              paybackPct >= 100 ? 'text-green-600' : 'text-muted-foreground'
+            )}
+          />
         </div>
-        <Progress value={Math.min(Math.max(roiPercent, 0), 100)} className="mt-2 h-2" />
+        <Progress
+          value={clampPaybackForBar(paybackPct)}
+          className={cn('mt-2 h-2', paybackPct >= 100 && '[&>*]:bg-green-600')}
+        />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 border-t border-border/60 pt-3">

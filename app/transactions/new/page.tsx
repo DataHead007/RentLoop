@@ -1,22 +1,49 @@
 import { TransactionForm } from '@/components/transactions/TransactionForm'
-import type { BusinessLine } from '@/lib/types/database'
-
-const BUSINESS_LINES: readonly BusinessLine[] = ['rental', 'badminton', 'youtube', 'wechat_video']
+import type { BusinessPlate, CreatorChannel } from '@/lib/types/businessPlate'
 
 export default async function NewTransactionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ itemId?: string; orderId?: string; businessLine?: string }>
+  searchParams: Promise<{
+    itemId?: string
+    orderId?: string
+    businessPlate?: string
+    creatorChannel?: string
+    /** @deprecated 兼容旧链接 */
+    businessLine?: string
+  }>
 }) {
-  const { itemId, orderId, businessLine } = await searchParams
-  const defaultBusinessLine =
-    businessLine && (BUSINESS_LINES as readonly string[]).includes(businessLine)
-      ? (businessLine as BusinessLine)
-      : undefined
+  const { itemId, orderId, businessPlate, creatorChannel, businessLine } = await searchParams
+
+  let defaultPlate: BusinessPlate = 'rental'
+  let defaultCreatorChannel: CreatorChannel | null = null
+
+  if (businessPlate === 'rental' || businessPlate === 'badminton' || businessPlate === 'creator') {
+    defaultPlate = businessPlate
+  } else if (businessLine === 'badminton') {
+    defaultPlate = 'badminton'
+  } else if (businessLine === 'youtube') {
+    defaultPlate = 'creator'
+    defaultCreatorChannel = 'youtube'
+  } else if (businessLine === 'wechat_video') {
+    defaultPlate = 'creator'
+    defaultCreatorChannel = 'wechat_video'
+  }
+
+  if (defaultPlate === 'creator') {
+    if (creatorChannel === 'youtube' || creatorChannel === 'wechat_video' || creatorChannel === 'xiaohongshu') {
+      defaultCreatorChannel = creatorChannel
+    }
+  }
 
   return (
-    <div className="container mx-auto min-w-0 w-full max-w-3xl px-4 py-8 sm:px-6">
-      <TransactionForm itemId={itemId} orderId={orderId} defaultBusinessLine={defaultBusinessLine} />
+    <div className="container mx-auto min-w-0 w-full max-w-3xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
+      <TransactionForm
+        itemId={itemId}
+        orderId={orderId}
+        defaultPlate={defaultPlate}
+        defaultCreatorChannel={defaultCreatorChannel}
+      />
     </div>
   )
 }

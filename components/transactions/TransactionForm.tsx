@@ -19,7 +19,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import type { Transaction, Order, Item, BusinessLine } from '@/lib/types/database'
+import type { Transaction, Order, Item } from '@/lib/types/database'
+import type { BusinessPlate, CreatorChannel } from '@/lib/types/businessPlate'
+import { BUSINESS_PLATES, PLATE_LABEL, CHANNEL_LABEL, CREATOR_CHANNELS } from '@/lib/types/businessPlate'
 import {
   BADMINTON_INCOME_CATEGORIES,
   BADMINTON_EXPENSE_CATEGORIES,
@@ -32,16 +34,28 @@ import {
   WECHAT_VIDEO_INCOME_CATEGORIES,
   WECHAT_VIDEO_EXPENSE_CATEGORIES,
 } from '@/lib/constants/wechatVideo'
+import {
+  XIAOHONGSHU_INCOME_CATEGORIES,
+  XIAOHONGSHU_EXPENSE_CATEGORIES,
+} from '@/lib/constants/xiaohongshu'
 
 interface TransactionFormProps {
   transactionId?: string
   orderId?: string // 可选：从订单页面创建交易时传入
   itemId?: string // 可选：从资产页面创建交易时传入
-  /** 新建时默认业务线（例如从交易页带 query 进入） */
-  defaultBusinessLine?: BusinessLine
+  /** 新建时默认板块 */
+  defaultPlate?: BusinessPlate
+  /** 自媒体默认渠道（仅 plate=creator 时） */
+  defaultCreatorChannel?: CreatorChannel | null
 }
 
-export function TransactionForm({ transactionId, orderId, itemId, defaultBusinessLine }: TransactionFormProps) {
+export function TransactionForm({
+  transactionId,
+  orderId,
+  itemId,
+  defaultPlate = 'rental',
+  defaultCreatorChannel = null,
+}: TransactionFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -56,7 +70,8 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
     category: '',
     description: '',
     transaction_date: format(new Date(), 'yyyy-MM-dd'),
-    business_line: (defaultBusinessLine ?? 'rental') as BusinessLine,
+    business_plate: defaultPlate,
+    creator_channel: defaultPlate === 'creator' ? defaultCreatorChannel ?? 'youtube' : null,
   })
   
   // 金额输入框的状态（用于公式计算）
@@ -74,6 +89,16 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
       loadItem()
     }
   }, [transactionId, orderId, itemId])
+
+  useEffect(() => {
+    if (orderId || itemId) {
+      setFormData((prev) => ({
+        ...prev,
+        business_plate: 'rental',
+        creator_channel: null,
+      }))
+    }
+  }, [orderId, itemId])
 
   // 单独的 effect 用于加载资产列表
   useEffect(() => {
@@ -102,7 +127,8 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
         category: data.category || '',
         description: data.description || '',
         transaction_date: data.transaction_date,
-        business_line: (data.business_line as BusinessLine) || 'rental',
+        business_plate: data.business_plate ?? 'rental',
+        creator_channel: data.creator_channel ?? null,
       })
       setAmountInput(amountStr)
       setDate(new Date(data.transaction_date))
@@ -309,6 +335,11 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
       return
     }
 
+    if (formData.business_plate === 'creator' && !formData.creator_channel) {
+      alert('请选择自媒体渠道')
+      return
+    }
+
     setSubmitting(true)
     try {
       // 对于支出类型，确保金额是负数
@@ -324,7 +355,9 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
         category: formData.category || null,
         description: formData.description || null,
         transaction_date: format(date, 'yyyy-MM-dd'),
-        business_line: formData.business_line,
+        business_plate: formData.business_plate,
+        creator_channel:
+          formData.business_plate === 'creator' ? formData.creator_channel : null,
       }
 
       const url = transactionId ? `/api/transactions/${transactionId}` : '/api/transactions'
@@ -377,28 +410,36 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
     )
   }
 
-  const getCategories = () => {
-    if (formData.business_line === 'badminton') {
+  const getCategories = (): { income: string[]; expense: string[] } => {
+    const plate = formData.business_plate
+    const ch = formData.creator_channel
+    if (plate === 'badminton') {
       return {
         income: [...BADMINTON_INCOME_CATEGORIES, '其他收入'],
         expense: [...BADMINTON_EXPENSE_CATEGORIES, '其他支出'],
       }
     }
-    if (formData.business_line === 'youtube') {
+    if (plate === 'creator' && ch === 'youtube') {
       return {
         income: [...YOUTUBE_INCOME_CATEGORIES],
         expense: [...YOUTUBE_EXPENSE_CATEGORIES],
       }
     }
-    if (formData.business_line === 'wechat_video') {
+    if (plate === 'creator' && ch === 'wechat_video') {
       return {
         income: [...WECHAT_VIDEO_INCOME_CATEGORIES],
         expense: [...WECHAT_VIDEO_EXPENSE_CATEGORIES],
       }
     }
+    if (plate === 'creator' && ch === 'xiaohongshu') {
+      return {
+        income: [...XIAOHONGSHU_INCOME_CATEGORIES],
+        expense: [...XIAOHONGSHU_EXPENSE_CATEGORIES],
+      }
+    }
     return {
-      income: ['租金收入', '押金收入', '配件出售收入', '赔偿收入', '其他收入'],
-      expense: ['设备购买', '维护费用', '物流费用', '其他支出'],
+      income: ['租金收入', '押金收入', '配件出售收入', '赔偿收入', '融资放款入账', '其他收入'],
+      expense: ['设备购买', '维护费用', '物流费用', '物流支出', '转租支出', '融资成本', '归还借款本金', '其他支出'],
     }
   }
   const categories = getCategories()
@@ -412,29 +453,63 @@ export function TransactionForm({ transactionId, orderId, itemId, defaultBusines
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="business_line">业务线 *</Label>
-              <Select
-                value={formData.business_line}
-                onValueChange={(value: BusinessLine) =>
-                  setFormData({ ...formData, business_line: value, category: '' })
-                }
-                disabled={!!orderId || !!itemId}
-              >
-                <SelectTrigger id="business_line">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="rental">租赁业务</SelectItem>
-                  <SelectItem value="badminton">羽毛球副业</SelectItem>
-                  <SelectItem value="youtube">YouTube频道</SelectItem>
-                  <SelectItem value="wechat_video">微信视频号</SelectItem>
-                </SelectContent>
-              </Select>
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-5 sm:space-y-6">
+          <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
+            <div className="space-y-2 md:col-span-2">
+              <Label>板块 *</Label>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Select
+                    value={formData.business_plate}
+                    onValueChange={(value: BusinessPlate) =>
+                      setFormData({
+                        ...formData,
+                        business_plate: value,
+                        creator_channel:
+                          value === 'creator' ? formData.creator_channel ?? 'youtube' : null,
+                        category: '',
+                      })
+                    }
+                    disabled={!!orderId || !!itemId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BUSINESS_PLATES.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {PLATE_LABEL[p]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.business_plate === 'creator' ? (
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Label className="text-muted-foreground">自媒体渠道 *</Label>
+                    <Select
+                      value={formData.creator_channel ?? 'youtube'}
+                      onValueChange={(value: CreatorChannel) =>
+                        setFormData({ ...formData, creator_channel: value, category: '' })
+                      }
+                      disabled={!!orderId || !!itemId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CREATOR_CHANNELS.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {CHANNEL_LABEL[c]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
               {(orderId || itemId) && (
-                <p className="text-xs text-muted-foreground">从订单/资产创建的交易自动关联租赁业务</p>
+                <p className="text-xs text-muted-foreground">从订单/资产创建的交易固定为租赁板块</p>
               )}
             </div>
 

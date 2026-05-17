@@ -1,18 +1,19 @@
 'use client'
 
 import Link from 'next/link'
-import type { BusinessLine, Transaction } from '@/lib/types/database'
+import type { Transaction } from '@/lib/types/database'
+import { CHANNEL_LABEL, PLATE_LABEL } from '@/lib/types/businessPlate'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Edit, Sparkles, Trash2, TrendingDown, TrendingUp } from 'lucide-react'
 import { formatCurrency, formatDateShort } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 
-const BUSINESS_LINE_LABEL: Record<BusinessLine, string> = {
-  rental: '租赁',
-  badminton: '羽毛球',
-  youtube: 'YouTube',
-  wechat_video: '视频号',
+function plateDisplay(tx: Transaction): string {
+  if (tx.business_plate === 'creator' && tx.creator_channel) {
+    return `${PLATE_LABEL.creator} · ${CHANNEL_LABEL[tx.creator_channel]}`
+  }
+  return PLATE_LABEL[tx.business_plate]
 }
 
 type TransactionListMobileCardProps = {
@@ -73,8 +74,8 @@ export function TransactionListMobileCard({ transaction, onDelete }: Transaction
           </dd>
         </div>
         <div className="flex gap-2">
-          <dt className="w-12 shrink-0 text-xs font-medium text-muted-foreground">业务</dt>
-          <dd className="text-muted-foreground">{BUSINESS_LINE_LABEL[transaction.business_line] ?? transaction.business_line}</dd>
+          <dt className="w-12 shrink-0 text-xs font-medium text-muted-foreground">板块</dt>
+          <dd className="text-muted-foreground">{plateDisplay(transaction)}</dd>
         </div>
       </dl>
 

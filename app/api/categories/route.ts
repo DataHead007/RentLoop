@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getCategories, createCategory, deleteCategory } from '@/lib/supabase/queries'
+import { getCategories, createCategory, deleteCategory, getItems } from '@/lib/supabase/queries'
 import { apiError } from '@/lib/api/response'
+import type { Category } from '@/lib/types/database'
 
 export async function GET() {
   try {
@@ -8,7 +9,23 @@ export async function GET() {
     return NextResponse.json(categories)
   } catch (error) {
     console.error('Error fetching categories:', error)
-    return apiError('CATEGORIES_FETCH_FAILED', 'Failed to fetch categories', 500)
+    // 兜底：当 categories 表不可用时，从 items 关联品类中回填，避免前端完全不可用
+    try {
+      const items = await getItems()
+      const categoryMap = new Map<string, Category>()
+      for (const item of items) {
+        if (item.category?.id && item.category?.name) {
+          categoryMap.set(item.category.id, item.category)
+        }
+      }
+      const fallback = Array.from(categoryMap.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, 'zh-CN')
+      )
+      return NextResponse.json(fallback)
+    } catch (fallbackError) {
+      console.error('Error building fallback categories from items:', fallbackError)
+      return apiError('CATEGORIES_FETCH_FAILED', 'Failed to fetch categories', 500)
+    }
   }
 }
 

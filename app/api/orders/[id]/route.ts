@@ -203,7 +203,8 @@ export async function PATCH(
                 description: `羽毛球订单 ${order.order_number || order.id.slice(0, 8)} - ${line.category}`,
                 transaction_date: txDate,
                 auto_created: true,
-                business_line: 'badminton',
+                business_plate: 'badminton',
+                creator_channel: null,
               })
             }
           }
@@ -287,7 +288,8 @@ export async function PATCH(
                 description: `羽毛球订单 ${order.order_number || order.id.slice(0, 8)} - ${line.category}`,
                 transaction_date: txDate,
                 auto_created: true,
-                business_line: 'badminton',
+                business_plate: 'badminton',
+                creator_channel: null,
               })
             }
           }
@@ -612,7 +614,8 @@ export async function PATCH(
                   description: `订单 ${order.order_number || order.id.slice(0, 8)} - ${orderItem.item?.name || '设备'}租金${orderItem.net_amount != null ? '（已扣除手续费）' : ''}${(orderItem.quantity || 1) > 1 ? ` x${orderItem.quantity}` : ''}`,
                   transaction_date: order.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -637,7 +640,8 @@ export async function PATCH(
                       description: `订单 ${order.order_number || order.id.slice(0, 8)} - ${orderItem.item?.name || '设备'}物流成本（按实际租金比例分摊）`,
                       transaction_date: order.end_date,
                       auto_created: true,
-                      business_line: 'rental',
+                      business_plate: 'rental',
+                creator_channel: null,
                     })
                   }
                 }
@@ -652,7 +656,8 @@ export async function PATCH(
                   description: `订单 ${order.order_number || order.id.slice(0, 8)} - 物流成本`,
                   transaction_date: order.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -672,7 +677,8 @@ export async function PATCH(
                 description: `订单 ${order.order_number || order.id.slice(0, 8)} - 物流成本`,
                 transaction_date: order.end_date,
                 auto_created: true,
-                business_line: 'rental',
+                business_plate: 'rental',
+                creator_channel: null,
               })
             }
           }
@@ -689,7 +695,8 @@ export async function PATCH(
                   description: `订单 ${order.order_number || order.id.slice(0, 8)} - ${rental.game_name}转租成本`,
                   transaction_date: order.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -709,7 +716,8 @@ export async function PATCH(
                 description: `羽毛球订单 ${order.order_number || order.id.slice(0, 8)} - ${line.category}`,
                 transaction_date: txDate,
                 auto_created: true,
-                business_line: 'badminton',
+                business_plate: 'badminton',
+                creator_channel: null,
               })
             }
           }
@@ -753,7 +761,8 @@ export async function PATCH(
                   description: `订单 ${order.order_number || order.id.slice(0, 8)} - ${orderItem.item?.name || '设备'}租金${orderItem.net_amount != null ? '（已扣除手续费）' : ''}${(orderItem.quantity || 1) > 1 ? ` x${orderItem.quantity}` : ''}`,
                   transaction_date: order.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -777,7 +786,8 @@ export async function PATCH(
                       description: `订单 ${order.order_number || order.id.slice(0, 8)} - ${orderItem.item?.name || '设备'}物流成本（按实际租金比例分摊）`,
                       transaction_date: order.end_date,
                       auto_created: true,
-                      business_line: 'rental',
+                      business_plate: 'rental',
+                creator_channel: null,
                     })
                   }
                 }
@@ -791,7 +801,8 @@ export async function PATCH(
                   description: `订单 ${order.order_number || order.id.slice(0, 8)} - 物流成本`,
                   transaction_date: order.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -810,7 +821,8 @@ export async function PATCH(
                 description: `订单 ${order.order_number || order.id.slice(0, 8)} - 物流成本`,
                 transaction_date: order.end_date,
                 auto_created: true,
-                business_line: 'rental',
+                business_plate: 'rental',
+                creator_channel: null,
               })
             }
           }
@@ -827,7 +839,8 @@ export async function PATCH(
                   description: `订单 ${order.order_number || order.id.slice(0, 8)} - ${rental.game_name}转租成本`,
                   transaction_date: order.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -943,7 +956,8 @@ export async function PATCH(
                   description: `订单 ${orderForTx.order_number || orderForTx.id.slice(0, 8)} - ${orderItem.item?.name || '设备'}租金${orderItem.net_amount != null ? '（已扣除手续费）' : ''}${(orderItem.quantity || 1) > 1 ? ` x${orderItem.quantity}` : ''}`,
                   transaction_date: orderForTx.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -967,7 +981,8 @@ export async function PATCH(
                       description: `订单 ${orderForTx.order_number || orderForTx.id.slice(0, 8)} - ${orderItem.item?.name || '设备'}物流成本（按实际租金比例分摊）`,
                       transaction_date: orderForTx.end_date,
                       auto_created: true,
-                      business_line: 'rental',
+                      business_plate: 'rental',
+                creator_channel: null,
                     })
                   }
                 }
@@ -981,7 +996,8 @@ export async function PATCH(
                   description: `订单 ${orderForTx.order_number || orderForTx.id.slice(0, 8)} - 物流成本`,
                   transaction_date: orderForTx.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -1000,7 +1016,8 @@ export async function PATCH(
                 description: `订单 ${orderForTx.order_number || orderForTx.id.slice(0, 8)} - 物流成本`,
                 transaction_date: orderForTx.end_date,
                 auto_created: true,
-                business_line: 'rental',
+                business_plate: 'rental',
+                creator_channel: null,
               })
             }
           }
@@ -1017,7 +1034,8 @@ export async function PATCH(
                   description: `订单 ${orderForTx.order_number || orderForTx.id.slice(0, 8)} - ${rental.game_name}转租成本`,
                   transaction_date: orderForTx.end_date,
                   auto_created: true,
-                  business_line: 'rental',
+                  business_plate: 'rental',
+                creator_channel: null,
                 })
               }
             }
@@ -1037,7 +1055,8 @@ export async function PATCH(
                 description: `羽毛球订单 ${orderForTx.order_number || orderForTx.id.slice(0, 8)} - ${line.category}`,
                 transaction_date: txDate,
                 auto_created: true,
-                business_line: 'badminton',
+                business_plate: 'badminton',
+                creator_channel: null,
               })
             }
           }

@@ -15,8 +15,14 @@ import type {
   Customer,
   ItemAccountBinding,
   BadmintonOrderLine,
-  BusinessLine,
+  FinancingLoan,
+  FinancingLoanPayment,
 } from '../types/database'
+import type { BusinessPlate, CreatorChannel } from '../types/businessPlate'
+import { normalizeTransactionPlateInput } from '@/lib/finance/transactionPlate'
+
+const NON_OPERATING_INCOME_CATEGORIES = new Set(['融资放款入账'])
+const NON_OPERATING_EXPENSE_CATEGORIES = new Set(['归还借款本金'])
 
 // 品类查询
 export async function getCategories(): Promise<Category[]> {
@@ -276,6 +282,13 @@ export async function getItemWithStats(id: string): Promise<ItemWithStats | null
   const roi = totalCost > 0 
     ? (stats.net_profit / totalCost) * 100 
     : 0
+
+  const loans = await getFinancingLoans(id)
+  const financing_principal_remaining = Math.round(
+    loans
+      .filter((l) => l.status === 'active')
+      .reduce((acc, l) => acc + (parseFloat(String(l.principal_remaining ?? 0)) || 0), 0) * 100
+  ) / 100
   
   return {
     ...item,
@@ -283,6 +296,14 @@ export async function getItemWithStats(id: string): Promise<ItemWithStats | null
     net_profit: stats.net_profit,
     total_days_rented: stats.total_days_rented,
     roi: Math.round(roi * 100) / 100, // 保留两位小数
+    payback_progress_pct: stats.payback_progress_pct,
+    payback_excess_amount: stats.payback_excess_amount,
+    payback_remaining: stats.payback_remaining,
+    financing_disbursement_total: stats.financing_disbursement_total,
+    owner_equity_purchase: stats.owner_equity_purchase,
+    operating_surplus: stats.operating_surplus,
+    effective_purchase_cost: stats.effectivePurchaseCost,
+    financing_principal_remaining,
   }
 }
 
@@ -325,7 +346,22 @@ export async function deleteItem(id: string): Promise<void> {
 }
 
 // 获取资产统计信息（用于计算 ROI）- 优化版本：主要从 transactions 表查询
-export async function getItemStats(itemId: string, item?: { purchase_price: number; sold_price?: number | null }): Promise<{ total_revenue: number; net_profit: number; total_days_rented: number; effectivePurchaseCost: number; other_costs: number }> {
+export async function getItemStats(
+  itemId: string,
+  item?: { purchase_price: number; sold_price?: number | null }
+): Promise<{
+  total_revenue: number
+  net_profit: number
+  total_days_rented: number
+  effectivePurchaseCost: number
+  other_costs: number
+  financing_disbursement_total: number
+  owner_equity_purchase: number
+  operating_surplus: number
+  payback_remaining: number
+  payback_progress_pct: number
+  payback_excess_amount: number
+}> {
   // 1. 从 transactions 表查询该资产的所有交易（收入 + 支出）
   const { data: allTransactions, error: transactionsError } = await supabaseDb
     .from('transactions')
@@ -338,14 +374,22 @@ export async function getItemStats(itemId: string, item?: { purchase_price: numb
   let total_revenue = 0
   let purchase_cost = 0  // 购买成本（从交易记录中获取）
   let other_costs = 0    // 其他成本（物流、转租等，不包括购买成本）
+  let financing_disbursement_total = 0
   const purchaseCategories = new Set(['设备采购', '设备购买'])
   
   allTransactions?.forEach(tx => {
     const amount = parseFloat(tx.amount.toString()) || 0
     if (tx.type === 'income') {
-      total_revenue += amount
+      if (NON_OPERATING_INCOME_CATEGORIES.has(tx.category || '')) {
+        financing_disbursement_total += Math.abs(amount)
+      } else {
+        total_revenue += amount
+      }
     } else if (tx.type === 'expense') {
       const absAmount = Math.abs(amount)
+      if (NON_OPERATING_EXPENSE_CATEGORIES.has(tx.category || '')) {
+        return
+      }
       // 区分购买成本和其他成本
       if (purchaseCategories.has(tx.category || '')) {
         purchase_cost += absAmount
@@ -358,6 +402,15 @@ export async function getItemStats(itemId: string, item?: { purchase_price: numb
   // 如果没有交易记录中的购买成本，使用 items 表中的购买价格（向后兼容旧数据）
   const purchasePrice = item?.purchase_price || 0
   const effectivePurchaseCost = purchase_cost > 0 ? purchase_cost : purchasePrice
+
+  const owner_equity_purchase = Math.max(0, effectivePurchaseCost - financing_disbursement_total)
+  const operating_surplus = total_revenue - other_costs
+  const payback_remaining = Math.max(0, effectivePurchaseCost - operating_surplus)
+  const payback_excess_amount = Math.max(0, operating_surplus - effectivePurchaseCost)
+  const payback_progress_pct =
+    effectivePurchaseCost > 0
+      ? Math.max(0, (operating_surplus / effectivePurchaseCost) * 100)
+      : 0
   
   // 2. 计算总出租天数（仍需要查询 order_items，因为天数不是财务概念）
   const { data: orderItemsData, error: orderItemsError } = await supabaseDb
@@ -385,7 +438,19 @@ export async function getItemStats(itemId: string, item?: { purchase_price: numb
   // 设备出售收入也应当以 transactions 中的"设备出售"收入交易为准（旧数据请通过回填脚本补齐）
   const net_profit = total_revenue - effectivePurchaseCost - other_costs
   
-  return { total_revenue, net_profit, total_days_rented, effectivePurchaseCost, other_costs }
+  return {
+    total_revenue,
+    net_profit,
+    total_days_rented,
+    effectivePurchaseCost,
+    other_costs,
+    financing_disbursement_total,
+    owner_equity_purchase,
+    operating_surplus,
+    payback_remaining,
+    payback_progress_pct: Math.round(payback_progress_pct * 100) / 100,
+    payback_excess_amount,
+  }
 }
 
 // 获取带统计信息的资产列表（优化版本：批量查询）
@@ -416,7 +481,25 @@ export async function getItemsWithStats(): Promise<ItemWithStats[]> {
     .in('item_id', itemIds)
   
   if (transactionsError) throw transactionsError
-  
+
+  const { data: activeLoanRows, error: activeLoanErr } = await supabaseDb
+    .from('financing_loans')
+    .select('item_id, principal_remaining, status')
+    .eq('status', 'active')
+    .in('item_id', itemIds)
+
+  if (activeLoanErr) throw activeLoanErr
+
+  const financingPrincipalByItem = (activeLoanRows || []).reduce(
+    (acc, row: { item_id: string; principal_remaining: unknown }) => {
+      const id = row.item_id
+      const pr = parseFloat(String(row.principal_remaining ?? 0)) || 0
+      acc[id] = (acc[id] || 0) + pr
+      return acc
+    },
+    {} as Record<string, number>
+  )
+
   // 将数据按 item_id 分组，便于后续计算
   const orderItemsByItem = (allOrderItems || []).reduce((acc, item) => {
     if (!acc[item.item_id]) acc[item.item_id] = []
@@ -451,14 +534,22 @@ export async function getItemsWithStats(): Promise<ItemWithStats[]> {
     let total_revenue = 0
     let purchase_cost = 0  // 购买成本（从交易记录中获取）
     let other_costs = 0    // 其他成本（物流、转租等，不包括购买成本）
+    let financing_disbursement_total = 0
     const purchaseCategories = new Set(['设备采购', '设备购买'])
     
     transactions.forEach(tx => {
       const amount = parseFloat(tx.amount.toString()) || 0
       if (tx.type === 'income') {
-        total_revenue += amount
+        if (NON_OPERATING_INCOME_CATEGORIES.has(tx.category || '')) {
+          financing_disbursement_total += Math.abs(amount)
+        } else {
+          total_revenue += amount
+        }
       } else if (tx.type === 'expense') {
         const absAmount = Math.abs(amount)
+        if (NON_OPERATING_EXPENSE_CATEGORIES.has(tx.category || '')) {
+          return
+        }
         // 区分购买成本和其他成本
         if (purchaseCategories.has(tx.category || '')) {
           purchase_cost += absAmount
@@ -471,6 +562,15 @@ export async function getItemsWithStats(): Promise<ItemWithStats[]> {
     // 如果没有交易记录中的购买成本，使用 items 表中的购买价格（向后兼容旧数据）
     const purchasePrice = item.purchase_price || 0
     const effectivePurchaseCost = purchase_cost > 0 ? purchase_cost : purchasePrice
+
+    const owner_equity_purchase = Math.max(0, effectivePurchaseCost - financing_disbursement_total)
+    const operating_surplus = total_revenue - other_costs
+    const payback_remaining = Math.max(0, effectivePurchaseCost - operating_surplus)
+    const payback_excess_amount = Math.max(0, operating_surplus - effectivePurchaseCost)
+    const payback_progress_pct =
+      effectivePurchaseCost > 0
+        ? Math.max(0, (operating_surplus / effectivePurchaseCost) * 100)
+        : 0
     
     // 计算净收益（以 transactions 为唯一真相）：总收入 - 购买成本 - 其他成本
     // 设备出售收入也应当以 transactions 中的"设备出售"收入交易为准（旧数据请通过回填脚本补齐）
@@ -489,6 +589,14 @@ export async function getItemsWithStats(): Promise<ItemWithStats[]> {
       net_profit,
       total_days_rented,
       roi: Math.round(roi * 100) / 100, // 保留两位小数
+      payback_progress_pct: Math.round(payback_progress_pct * 100) / 100,
+      payback_excess_amount,
+      payback_remaining,
+      financing_disbursement_total,
+      owner_equity_purchase,
+      operating_surplus,
+      effective_purchase_cost: effectivePurchaseCost,
+      financing_principal_remaining: Math.round((financingPrincipalByItem[item.id] || 0) * 100) / 100,
     }
   })
   
@@ -1037,7 +1145,8 @@ export async function getTransactions(
     endDate?: string
     type?: 'income' | 'expense'
     category?: string
-    business_line?: BusinessLine | 'all'
+    business_plate?: BusinessPlate | 'all'
+    creator_channel?: CreatorChannel | 'all'
   }
 ): Promise<Transaction[]> {
   let query = supabaseDb
@@ -1053,8 +1162,11 @@ export async function getTransactions(
   if (filters?.endDate) query = query.lte('transaction_date', filters.endDate)
   if (filters?.type) query = query.eq('type', filters.type)
   if (filters?.category) query = query.eq('category', filters.category)
-  if (filters?.business_line && filters.business_line !== 'all') {
-    query = query.eq('business_line', filters.business_line)
+  if (filters?.business_plate && filters.business_plate !== 'all') {
+    query = query.eq('business_plate', filters.business_plate)
+  }
+  if (filters?.creator_channel && filters.creator_channel !== 'all') {
+    query = query.eq('creator_channel', filters.creator_channel)
   }
 
   const { data, error } = await query
@@ -1072,14 +1184,16 @@ export async function getTransactions(
 }
 
 export async function createTransaction(
-  transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at' | 'business_line'> & { business_line?: BusinessLine }
+  transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at' | 'business_plate' | 'creator_channel'> &
+    Partial<Pick<Transaction, 'business_plate' | 'creator_channel'>>
 ): Promise<Transaction> {
-  const business_line = transaction.business_line ?? 'rental'
-  const { data, error } = await supabaseDb
-    .from('transactions')
-    .insert({ ...transaction, business_line })
-    .select('*')
-    .single()
+  const normalized = normalizeTransactionPlateInput(transaction)
+  const payload = {
+    ...transaction,
+    business_plate: normalized.business_plate,
+    creator_channel: normalized.creator_channel,
+  }
+  const { data, error } = await supabaseDb.from('transactions').insert(payload).select('*').single()
   if (error) throw error
   return data
 }
@@ -1809,4 +1923,68 @@ export async function deleteShippingFee(id: string): Promise<void> {
     .eq('id', id)
   
   if (error) throw error
+}
+
+// ============================================
+// 购置融资（MVP）
+// ============================================
+
+export async function getFinancingLoans(itemId?: string): Promise<FinancingLoan[]> {
+  let q = supabaseDb
+    .from('financing_loans')
+    .select(`*, item:items(*, category:categories(*))`)
+    .order('created_at', { ascending: false })
+  if (itemId) q = q.eq('item_id', itemId)
+  const { data, error } = await q
+  if (error) throw error
+  return (data || []) as FinancingLoan[]
+}
+
+export async function getFinancingLoanById(id: string): Promise<FinancingLoan | null> {
+  const { data, error } = await supabaseDb
+    .from('financing_loans')
+    .select(`*, item:items(*, category:categories(*))`)
+    .eq('id', id)
+    .single()
+  if (error) {
+    if (error.code === 'PGRST116') return null
+    throw error
+  }
+  return data as FinancingLoan
+}
+
+export async function getFinancingLoanPayments(loanId: string): Promise<FinancingLoanPayment[]> {
+  const { data, error } = await supabaseDb
+    .from('financing_loan_payments')
+    .select('*')
+    .eq('loan_id', loanId)
+    .order('payment_date', { ascending: false })
+  if (error) throw error
+  return (data || []) as FinancingLoanPayment[]
+}
+
+export async function createFinancingLoan(
+  row: Omit<FinancingLoan, 'id' | 'created_at' | 'updated_at' | 'status' | 'item' | 'principal_remaining'> & {
+    principal_remaining?: number
+    status?: FinancingLoan['status']
+  }
+): Promise<FinancingLoan> {
+  const principal_remaining = row.principal_remaining ?? row.principal_total
+  const { data, error } = await supabaseDb
+    .from('financing_loans')
+    .insert({
+      item_id: row.item_id,
+      title: row.title ?? null,
+      principal_total: row.principal_total,
+      principal_remaining,
+      annual_rate_percent: row.annual_rate_percent,
+      repayment_day_of_month: row.repayment_day_of_month,
+      start_date: row.start_date,
+      status: row.status ?? 'active',
+      notes: row.notes ?? null,
+    })
+    .select(`*, item:items(*, category:categories(*))`)
+    .single()
+  if (error) throw error
+  return data as FinancingLoan
 }

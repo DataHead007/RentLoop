@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Loader2,
-  MapPin,
   Package,
   RotateCcw,
   Sparkles,
@@ -15,6 +14,7 @@ import {
   Truck,
 } from 'lucide-react'
 import { formatCurrency, formatDateShort, getDaysUntilEnd, getDaysUntilStart } from '@/lib/utils/format'
+import { formatProvinceCityLine } from '@/lib/utils/addressRegion'
 import { cn } from '@/lib/utils'
 
 type ShipSuggestion = {
@@ -232,26 +232,24 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
             {order.customer_phone && (
               <div className="text-xs text-muted-foreground">{order.customer_phone}</div>
             )}
-            {!isBadminton && order.customer_address?.trim() && (
-              <div className="relative mt-1 inline-block pt-0.5 group">
-                <button
-                  type="button"
-                  aria-label="查看详细地址"
-                  className="inline-flex cursor-help items-center text-muted-foreground hover:text-foreground focus-visible:text-foreground"
-                >
-                  <MapPin className="h-3.5 w-3.5" />
-                </button>
-                <div
-                  role="tooltip"
-                  className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-[min(18rem,calc(100vw-2rem))] rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md group-hover:block group-focus-within:block"
-                >
-                  <div className="mb-1 font-medium">客户地址</div>
-                  <div className="break-words leading-relaxed text-muted-foreground whitespace-normal">
-                    {order.customer_address}
+            {!isBadminton && order.customer_address?.trim() ? (
+              (() => {
+                const full = order.customer_address!.trim()
+                const region = formatProvinceCityLine(full)
+                if (region) {
+                  return (
+                    <div className="mt-1 text-xs text-muted-foreground leading-snug line-clamp-2" title={full}>
+                      {region}
+                    </div>
+                  )
+                }
+                return (
+                  <div className="mt-1 text-xs text-muted-foreground leading-snug truncate" title={full}>
+                    {full.length > 14 ? `${full.slice(0, 14)}…` : full}
                   </div>
-                </div>
-              </div>
-            )}
+                )
+              })()
+            ) : null}
           </dd>
         </div>
 

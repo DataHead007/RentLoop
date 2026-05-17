@@ -17,10 +17,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp, MapPin } from 'lucide-react'
+import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp } from 'lucide-react'
 import type { Order } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd, getDateRangeForPreset } from '@/lib/utils/format'
+import { formatProvinceCityLine } from '@/lib/utils/addressRegion'
 import { cn } from '@/lib/utils'
 import { getSiliconflowApiKey } from '@/lib/settings/storageKeys'
 import { ShippingDialog } from './ShippingDialog'
@@ -475,17 +476,17 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
   const getRowBackgroundClass = (status: string, isUrgent: boolean) => {
     // 悬停不改变背景，仅用左侧主色边框提示当前行
     const hoverHint = 'border-l-4 border-l-transparent hover:border-l-primary/80'
-    if (isUrgent) return 'bg-orange-200/90 hover:!bg-orange-200/90 ' + hoverHint
+    if (isUrgent) return 'bg-orange-50/95 hover:!bg-orange-50/95 ' + hoverHint
     switch (status) {
       case 'pending':
       case 'confirmed':
-        return 'bg-blue-100 hover:!bg-blue-100 ' + hoverHint
+        return 'bg-blue-50/90 hover:!bg-blue-50/90 ' + hoverHint
       case 'in_progress':
-        return 'bg-amber-100 hover:!bg-amber-100 ' + hoverHint
+        return 'bg-amber-50/90 hover:!bg-amber-50/90 ' + hoverHint
       case 'completed':
-        return 'bg-green-100 hover:!bg-green-100 ' + hoverHint
+        return 'bg-emerald-50/85 hover:!bg-emerald-50/85 ' + hoverHint
       case 'cancelled':
-        return 'bg-slate-200/80 hover:!bg-slate-200/80 ' + hoverHint
+        return 'bg-slate-100/90 hover:!bg-slate-100/90 ' + hoverHint
       default:
         return hoverHint
     }
@@ -495,9 +496,9 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
     switch (status) {
       case 'pending':
       case 'confirmed':
-        return 'bg-blue-200 text-blue-900 border-blue-300'
+        return 'bg-blue-100/90 text-blue-900 border-blue-200/80'
       case 'in_progress':
-        return 'bg-amber-200 text-amber-900 border-amber-300'
+        return 'bg-amber-100/90 text-amber-900 border-amber-200/80'
       default:
         return ''
     }
@@ -514,13 +515,13 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
             {module === 'rental' ? '租赁订单' : module === 'badminton' ? '羽毛球副业订单' : '全部订单'}
           </h2>
-          <p className="text-muted-foreground">
+          <p className="text-sm text-muted-foreground sm:text-base">
             {module === 'rental'
               ? '设备租赁、游戏账号等'
               : module === 'badminton'
@@ -550,7 +551,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
             </p>
           )}
         </div>
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:w-auto">
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end lg:min-w-0 lg:w-auto lg:max-w-full lg:shrink">
           {module === 'hub' && (
             <div className="flex shrink-0 overflow-x-auto rounded-lg border bg-muted/50 p-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap">
               {(['all', 'rental', 'badminton'] as const).map((tab) => (
@@ -559,7 +560,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                   type="button"
                   onClick={() => setOrderTypeTab(tab)}
                   className={cn(
-                    'shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                    'shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-10',
                     orderTypeTab === tab ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
@@ -587,7 +588,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               type="button"
               onClick={() => setDatePreset(preset)}
               className={cn(
-                'shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                'shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors min-h-10',
                 datePreset === preset ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
               )}
             >
@@ -609,14 +610,14 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
 
       {/* 统计卡片区域 */}
       {orders.length > 0 && (
-        <div className={`grid gap-4 md:grid-cols-2 ${stats.returnedDeposit > 0 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
+        <div className={`grid gap-3 sm:gap-4 md:grid-cols-2 ${stats.returnedDeposit > 0 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">订单总金额</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.totalAmount)}</div>
+              <div className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.totalAmount)}</div>
               <p className="text-xs text-muted-foreground">共 {stats.totalOrders} 个订单</p>
             </CardContent>
           </Card>
@@ -627,7 +628,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               <Shield className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.totalDeposit)}</div>
+              <div className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.totalDeposit)}</div>
               <p className="text-xs text-muted-foreground">
                 待发货 + 待收货订单押金（{stats.statusCounts.in_progress + stats.statusCounts.confirmed} 个订单）
               </p>
@@ -641,7 +642,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-muted-foreground">{formatCurrency(stats.returnedDeposit)}</div>
+                <div className="text-2xl font-semibold tabular-nums text-muted-foreground">{formatCurrency(stats.returnedDeposit)}</div>
                 <p className="text-xs text-muted-foreground">
                   已完成 + 已取消订单押金（{stats.statusCounts.completed + stats.statusCounts.cancelled} 个订单）
                 </p>
@@ -656,7 +657,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                 <Truck className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(stats.pendingAmount)}</div>
+                <div className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.pendingAmount)}</div>
                 <p className="text-xs text-muted-foreground">
                   待发货（{stats.statusCounts.pending + stats.statusCounts.confirmed} 个订单）
                 </p>
@@ -670,7 +671,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.inProgressAmount)}</div>
+              <div className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.inProgressAmount)}</div>
               <p className="text-xs text-muted-foreground">
                 待收货（{stats.statusCounts.in_progress} 个订单）
               </p>
@@ -683,7 +684,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.completedAmount)}</div>
+              <div className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.completedAmount)}</div>
               <p className="text-xs text-muted-foreground">
                 已完成 {stats.statusCounts.completed} 个订单
               </p>
@@ -696,7 +697,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className={cn('text-2xl font-bold', stats.profit >= 0 ? 'text-green-600' : 'text-red-600')}>
+              <div className={cn('text-2xl font-semibold tabular-nums', stats.profit >= 0 ? 'text-green-600' : 'text-red-600')}>
                 {formatCurrency(stats.profit)}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -712,7 +713,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                 <Calendar className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-muted-foreground">{formatCurrency(stats.cancelledAmount)}</div>
+                <div className="text-2xl font-semibold tabular-nums text-muted-foreground">{formatCurrency(stats.cancelledAmount)}</div>
                 <p className="text-xs text-muted-foreground">
                   已取消 {stats.statusCounts.cancelled} 个订单
                 </p>
@@ -769,19 +770,19 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                 />
               ))}
             </div>
-            <div className="hidden lg:block">
-            <Table>
+            <div className="hidden min-w-0 lg:block">
+            <Table className="table-fixed !min-w-0 w-full [&_td]:align-top [&_td]:px-2.5 [&_td]:py-2.5 [&_th]:px-2.5 [&_th]:py-2.5">
               <TableHeader>
                 <TableRow>
-                  <TableHead>类型</TableHead>
-                  <TableHead>订单编号</TableHead>
-                  <TableHead>{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
-                  <TableHead>客户</TableHead>
-                  <TableHead>{isBadmintonOnlyView ? '上课时间' : '日期'}</TableHead>
-                  <TableHead>总金额</TableHead>
-                  {!isBadmintonOnlyView && <TableHead>押金</TableHead>}
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead className="w-20 shrink-0">类型</TableHead>
+                  <TableHead className="w-[7.5rem] shrink-0">订单编号</TableHead>
+                  <TableHead className="min-w-0">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
+                  <TableHead className="min-w-0">客户</TableHead>
+                  <TableHead className="min-w-0">{isBadmintonOnlyView ? '上课时间' : '日期'}</TableHead>
+                  <TableHead className="w-24 shrink-0 whitespace-nowrap">总金额</TableHead>
+                  {!isBadmintonOnlyView && <TableHead className="w-24 shrink-0 whitespace-nowrap">押金</TableHead>}
+                  <TableHead className="w-28 shrink-0">状态</TableHead>
+                  <TableHead className="min-w-[12.5rem] w-[13rem] shrink-0 text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -804,62 +805,73 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                       className={cn(getRowBackgroundClass(order.status, isUrgent))}
                     >
                       <TableCell>
-                        <Badge variant={isBadminton ? 'secondary' : 'outline'} className={isBadminton ? 'bg-emerald-100 text-emerald-800' : ''}>
+                        <Badge variant={isBadminton ? 'secondary' : 'outline'} className={isBadminton ? 'bg-emerald-50/95 text-emerald-800 border-emerald-200/70' : ''}>
                           {isBadminton ? '羽毛球' : '租赁'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {order.order_number || order.id.slice(0, 8)}
+                      <TableCell className="max-w-[7.5rem] font-mono text-xs align-top">
+                        <span className="block break-all leading-snug" title={order.order_number || order.id}>
+                          {order.order_number || order.id.slice(0, 8)}
+                        </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-0 align-top">
                         {isBadminton ? (
-                          <div>
-                            <div className="font-medium">{(order as any).service_type || '-'}</div>
-                            <div className="text-sm text-muted-foreground">{(order as any).location || '-'}</div>
+                          <div className="min-w-0 break-words">
+                            <div className="font-medium leading-snug">{(order as any).service_type || '-'}</div>
+                            <div className="text-sm text-muted-foreground leading-snug">{(order as any).location || '-'}</div>
                           </div>
                         ) : firstItem ? (
-                          <div className="flex items-center gap-2">
-                            {categoryIcon && <span className="flex-shrink-0">{categoryIcon}</span>}
-                            <div>
-                              <div className="font-medium">{firstItem.short_name?.trim() || firstItem.name}</div>
-                              {firstItem.category && <div className="text-sm text-muted-foreground">{firstItem.category.name}</div>}
-                              {itemCount > 1 && <div className="text-xs text-muted-foreground mt-1">等 {itemCount} 项</div>}
+                          <div className="flex min-w-0 items-start gap-2">
+                            {categoryIcon && <span className="mt-0.5 shrink-0">{categoryIcon}</span>}
+                            <div className="min-w-0 break-words">
+                              <div className="font-medium leading-snug">{firstItem.short_name?.trim() || firstItem.name}</div>
+                              {firstItem.category && (
+                                <div className="text-sm text-muted-foreground leading-snug">{firstItem.category.name}</div>
+                              )}
+                              {itemCount > 1 && <div className="mt-1 text-xs text-muted-foreground">等 {itemCount} 项</div>}
                             </div>
                           </div>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <div className="space-y-0.5">
-                          <div>{order.customer_name}</div>
-                          {order.customer_phone && <div className="text-xs text-muted-foreground">{order.customer_phone}</div>}
-                          {!isBadminton && order.customer_address?.trim() && (
-                            <div className="pt-0.5 relative inline-block group">
-                              <button
-                                type="button"
-                                aria-label="查看详细地址"
-                                className="inline-flex items-center text-muted-foreground hover:text-foreground focus-visible:text-foreground cursor-help"
-                              >
-                                <MapPin className="h-3.5 w-3.5" />
-                              </button>
-                              <div
-                                role="tooltip"
-                                className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden w-72 rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md group-hover:block group-focus-within:block"
-                              >
-                                <div className="font-medium mb-1">客户地址</div>
-                                <div className="break-words whitespace-normal leading-relaxed text-muted-foreground">
-                                  {order.customer_address}
-                                </div>
-                              </div>
-                            </div>
+                      <TableCell className="min-w-0 align-top">
+                        <div className="min-w-0 space-y-0.5 break-words">
+                          <div className="font-medium leading-snug">{order.customer_name}</div>
+                          {order.customer_phone && (
+                            <div className="text-xs text-muted-foreground leading-snug break-all">{order.customer_phone}</div>
                           )}
+                          {!isBadminton && order.customer_address?.trim() ? (
+                            (() => {
+                              const full = order.customer_address!.trim()
+                              const region = formatProvinceCityLine(full)
+                              if (region) {
+                                return (
+                                  <div
+                                    className="pt-0.5 text-xs text-muted-foreground leading-snug max-w-[13rem] line-clamp-2"
+                                    title={full}
+                                  >
+                                    {region}
+                                  </div>
+                                )
+                              }
+                              return (
+                                <div
+                                  className="pt-0.5 text-xs text-muted-foreground leading-snug max-w-[13rem] truncate"
+                                  title={full}
+                                >
+                                  {full.length > 14 ? `${full.slice(0, 14)}…` : full}
+                                </div>
+                              )
+                            })()
+                          ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-0 align-top">
                         {isBadminton ? (
-                          <span className="text-sm">
-                            {formatDateShort((order as any).service_date || order.start_date)}{timeRange}
+                          <span className="text-sm leading-snug break-words">
+                            {formatDateShort((order as any).service_date || order.start_date)}
+                            {timeRange}
                           </span>
                         ) : (
                           (() => {
@@ -867,7 +879,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                             const isInProgress = order.status === 'in_progress' && daysUntilStart < 0 && daysUntilEnd >= 0
                             const isCompleted = order.status === 'completed' || order.status === 'cancelled' || daysUntilEnd < 0
                             return (
-                              <div className="space-y-1">
+                              <div className="min-w-0 space-y-1 break-words">
                                 {isNotShipped ? (
                                   <>
                                     <div className="flex items-center gap-2 flex-wrap">
@@ -943,8 +955,8 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           {getStatusLabel(order.status, isBadminton)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                      <TableCell className="text-right align-top">
+                        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1 gap-y-1.5">
                           {!isBadminton && (order.status === 'pending' || order.status === 'confirmed') && (
                             <Button
                               size="sm"

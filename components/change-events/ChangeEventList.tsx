@@ -235,20 +235,20 @@ export function ChangeEventList() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">变更追踪</h2>
-          <p className="text-muted-foreground">追踪收入、支出和净利润的每一次变化</p>
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">变更追踪</h2>
+          <p className="text-sm text-muted-foreground sm:text-base">追踪收入、支出和净利润的每一次变化</p>
         </div>
-        <Button variant="outline" onClick={() => { loadEvents(); loadStats(); }}>
+        <Button variant="outline" className="w-full shrink-0 sm:w-auto" onClick={() => { loadEvents(); loadStats(); }}>
           <RefreshCw className="mr-2 h-4 w-4" />
           刷新
         </Button>
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">收入变化</CardTitle>
@@ -256,7 +256,7 @@ export function ChangeEventList() {
           </CardHeader>
           <CardContent>
             <div className={cn(
-              "text-2xl font-bold",
+              "text-2xl font-semibold tabular-nums",
               stats.totalDeltaIncome >= 0 ? "text-green-600" : "text-red-600"
             )}>
               {stats.totalDeltaIncome >= 0 ? '+' : ''}{formatCurrency(stats.totalDeltaIncome)}
@@ -271,7 +271,7 @@ export function ChangeEventList() {
           </CardHeader>
           <CardContent>
             <div className={cn(
-              "text-2xl font-bold",
+              "text-2xl font-semibold tabular-nums",
               stats.totalDeltaExpense > 0 ? "text-red-600" : "text-green-600"
             )}>
               {stats.totalDeltaExpense > 0 ? '+' : ''}{formatCurrency(stats.totalDeltaExpense)}
@@ -286,7 +286,7 @@ export function ChangeEventList() {
           </CardHeader>
           <CardContent>
             <div className={cn(
-              "text-2xl font-bold",
+              "text-2xl font-semibold tabular-nums",
               stats.totalDeltaNetProfit >= 0 ? "text-green-600" : "text-red-600"
             )}>
               {stats.totalDeltaNetProfit >= 0 ? '+' : ''}{formatCurrency(stats.totalDeltaNetProfit)}
@@ -300,7 +300,7 @@ export function ChangeEventList() {
             <RefreshCw className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalEvents}</div>
+            <div className="text-2xl font-semibold tabular-nums">{stats.totalEvents}</div>
             <p className="text-xs text-muted-foreground mt-1">
               新增 {stats.insertCount} / 修改 {stats.updateCount} / 删除 {stats.deleteCount}
             </p>
@@ -314,7 +314,7 @@ export function ChangeEventList() {
           <CardTitle className="text-lg">筛选条件</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* 时间范围预设 */}
             <div className="space-y-2">
               <Label>时间范围</Label>
@@ -459,7 +459,7 @@ export function ChangeEventList() {
                 <ChangeEventListMobileCard key={event.id} event={event} />
               ))}
             </div>
-            <div className="hidden lg:block">
+            <div className="hidden min-w-0 lg:block">
               <Table>
                 <TableHeader>
                   <TableRow>

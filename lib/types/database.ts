@@ -1,5 +1,7 @@
 // 数据库类型定义
 
+import type { BusinessPlate, CreatorChannel } from '@/lib/types/businessPlate'
+
 export interface Category {
   id: string
   name: string
@@ -33,7 +35,24 @@ export interface ItemWithStats extends Item {
   total_revenue: number
   net_profit: number
   total_days_rented: number
+  /** 账面条目口径：(净收益 / (购置 + 其他支出)) × 100，与「回本进度」不同 */
   roi: number
+  /** 相对有效购置价的经营回本比例（%），可超过 100（经营收入 − 非购置支出）/ 购置 × 100 */
+  payback_progress_pct: number
+  /** 经营累计净额已超过有效购置价的部分（购置已回本后的盈余） */
+  payback_excess_amount: number
+  /** 相对买价尚未通过经营收回的金额 */
+  payback_remaining: number
+  /** 融资放款入账合计（购置被贷款覆盖部分） */
+  financing_disbursement_total: number
+  /** 购置中自付现金部分 = 有效购置价 − 融资放款 */
+  owner_equity_purchase: number
+  /** 经营累计净额 = 经营口径收入 − 非购置、非还本支出（不含设备购买） */
+  operating_surplus: number
+  /** 有效购置价（来自交易「设备购买」或 items.purchase_price） */
+  effective_purchase_cost: number
+  /** 进行中融资剩余本金合计（记法 A：仅融资表，不由租金冲减） */
+  financing_principal_remaining: number
 }
 
 export interface Customer {
@@ -174,8 +193,6 @@ export interface ShippingFee {
   updated_at: string
 }
 
-export type BusinessLine = 'rental' | 'badminton' | 'youtube' | 'wechat_video'
-
 export interface Transaction {
   id: string
   order_id: string | null
@@ -186,11 +203,43 @@ export interface Transaction {
   description: string | null
   transaction_date: string
   auto_created: boolean
-  business_line: BusinessLine
+  /** 租赁 | 羽毛球 | 自媒体 */
+  business_plate: BusinessPlate
+  /** 仅自媒体板块有值 */
+  creator_channel: CreatorChannel | null
   created_at: string
   updated_at: string
   order?: Order
   item?: Item
+}
+
+/** 购置融资借款（MVP：1:1 绑定资产，先息后本，还款手动确认并写入 transactions） */
+export interface FinancingLoan {
+  id: string
+  item_id: string
+  title: string | null
+  principal_total: number
+  principal_remaining: number
+  annual_rate_percent: number
+  repayment_day_of_month: number
+  start_date: string
+  status: 'active' | 'closed'
+  notes: string | null
+  created_at: string
+  updated_at: string
+  item?: Item & { category?: Category }
+}
+
+export interface FinancingLoanPayment {
+  id: string
+  loan_id: string
+  payment_date: string
+  interest_amount: number
+  principal_amount: number
+  interest_transaction_id: string | null
+  principal_transaction_id: string | null
+  note: string | null
+  created_at: string
 }
 
 // 交易变更追踪事件

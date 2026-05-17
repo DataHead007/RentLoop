@@ -2,6 +2,7 @@
 
 import {
   differenceInDays,
+  intervalToDuration,
   startOfDay,
   startOfWeek,
   endOfWeek,
@@ -35,6 +36,26 @@ export function formatDateShort(date: string | Date): string {
     month: '2-digit',
     day: '2-digit',
   }).format(d)
+}
+
+/**
+ * 从购买日（按日历日）到参考日（默认今天）的已购入时长，用于资产详情展示。
+ */
+export function formatOwnershipDuration(purchaseDate: string | Date, referenceDate: Date = new Date()): string {
+  const purchase = typeof purchaseDate === 'string' ? new Date(purchaseDate) : purchaseDate
+  if (Number.isNaN(purchase.getTime())) return '—'
+
+  const start = startOfDay(purchase)
+  const end = startOfDay(referenceDate)
+  if (end < start) return '—'
+
+  const { years = 0, months = 0, days = 0 } = intervalToDuration({ start, end })
+  const parts: string[] = []
+  if (years > 0) parts.push(`${years}年`)
+  if (months > 0) parts.push(`${months}个月`)
+  if (days > 0) parts.push(`${days}天`)
+  if (parts.length === 0) return '当天购入'
+  return parts.join('')
 }
 
 /**
@@ -104,4 +125,10 @@ export function getDateRangeForPreset(
     startDate: formatDateToLocalString(start),
     endDate: formatDateToLocalString(end),
   }
+}
+
+/** 回本比例可超过 100%；进度条仅显示 0–100 的填充 */
+export function clampPaybackForBar(pct: number): number {
+  const n = Number.isFinite(pct) ? pct : 0
+  return Math.min(100, Math.max(0, n))
 }

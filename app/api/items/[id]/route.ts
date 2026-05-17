@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { updateItem, getItem, createTransaction, getTransactions } from '@/lib/supabase/queries'
 import { supabaseServer as supabase } from '@/lib/supabase/server'
 import { apiError } from '@/lib/api/response'
+import { normalizeItemLiquidationPatch } from '@/lib/items/normalizeItemLiquidationPatch'
 
 export async function GET(
   request: Request,
@@ -31,8 +32,9 @@ export async function PATCH(
     
     // 获取旧资产信息（用于判断是否需要更新交易）
     const oldItem = await getItem(id)
-    
-    const item = await updateItem(id, body)
+
+    const patchBody = normalizeItemLiquidationPatch(body, oldItem)
+    const item = await updateItem(id, patchBody)
     
     // 注意：本地缓存更新在客户端组件中处理
     
@@ -86,7 +88,8 @@ export async function PATCH(
               description: `${item.name} 设备购买`,
               transaction_date: item.purchase_date,
               auto_created: true,
-              business_line: 'rental',
+              business_plate: 'rental',
+              creator_channel: null,
             })
           }
         }
@@ -139,7 +142,8 @@ export async function PATCH(
               description: `${item.name} 设备出售`,
               transaction_date: item.sale_date!,
               auto_created: true,
-              business_line: 'rental',
+              business_plate: 'rental',
+              creator_channel: null,
             })
           }
         } catch (transactionError) {

@@ -23,7 +23,7 @@ import {
 import { Package, Plus, TrendingUp, Trash2, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, DollarSign, Loader2 } from 'lucide-react'
 import type { ItemWithStats } from '@/lib/types/database'
 import Link from 'next/link'
-import { formatCurrency } from '@/lib/utils/format'
+import { clampPaybackForBar, formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { ItemListMobileCard } from './ItemListMobileCard'
 
@@ -248,8 +248,7 @@ export function ItemList() {
     }
 
     let totalNetProfit = 0
-    let totalROI = 0
-    let itemsWithROI = 0
+    let totalPaybackProgress = 0
 
     items.forEach(item => {
       // 统计各状态数量
@@ -260,14 +259,10 @@ export function ItemList() {
       // 计算总净收益
       totalNetProfit += item.net_profit || 0
 
-      // 计算平均 ROI
-      if (item.roi !== undefined && item.roi !== null) {
-        totalROI += item.roi
-        itemsWithROI++
-      }
+      totalPaybackProgress += item.payback_progress_pct ?? 0
     })
 
-    const averageROI = itemsWithROI > 0 ? totalROI / itemsWithROI : 0
+    const averagePaybackProgress = items.length > 0 ? totalPaybackProgress / items.length : 0
     const availableCount = statusCounts.available
     const rentedCount = statusCounts.rented + statusCounts.in_use
     const soldCount = statusCounts.sold
@@ -275,7 +270,7 @@ export function ItemList() {
     return {
       statusCounts,
       totalNetProfit,
-      averageROI,
+      averagePaybackProgress,
       availableCount,
       rentedCount,
       soldCount,
@@ -379,11 +374,11 @@ export function ItemList() {
 
   if (error) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-5 sm:space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">资产档案</h2>
-            <p className="text-muted-foreground">管理你的租赁设备库存</p>
+            <h2 className="text-xl font-semibold tracking-tight">资产档案</h2>
+            <p className="text-sm text-muted-foreground">管理你的租赁设备库存</p>
           </div>
         </div>
         <Card>
@@ -401,11 +396,11 @@ export function ItemList() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="min-w-0 space-y-4 sm:space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">资产档案</h2>
-          <p className="text-muted-foreground">管理你的租赁设备库存</p>
+          <h2 className="text-xl font-semibold tracking-tight">资产档案</h2>
+          <p className="text-sm text-muted-foreground">管理你的租赁设备库存</p>
         </div>
         <Button asChild className="w-full shrink-0 sm:w-auto">
           <Link href="/items/new">
@@ -417,9 +412,9 @@ export function ItemList() {
 
       {/* 统计卡片区域 */}
       {items.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2 lg:grid-cols-4">
           {/* 资产总值卡片 */}
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">资产总值</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -431,7 +426,7 @@ export function ItemList() {
                 </div>
               ) : (
                 <>
-                  <div className="text-2xl font-bold">
+                  <div className="text-xl font-semibold tabular-nums tracking-tight">
                     {assetsValue ? formatCurrency(assetsValue.totalPurchasePrice) : '--'}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -443,13 +438,13 @@ export function ItemList() {
           </Card>
 
           {/* 资产数量卡片 */}
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">资产数量</CardTitle>
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-xl font-semibold tabular-nums tracking-tight">
                 {stats.totalCount} 件
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -459,14 +454,14 @@ export function ItemList() {
           </Card>
 
           {/* 总净收益卡片 */}
-          <Card className="hover:shadow-lg transition-shadow">
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">总净收益</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className={cn(
-                "text-2xl font-bold",
+                "text-xl font-semibold tabular-nums tracking-tight",
                 stats.totalNetProfit >= 0 ? "text-green-600" : "text-red-600"
               )}>
                 {formatCurrency(stats.totalNetProfit)}
@@ -477,21 +472,23 @@ export function ItemList() {
             </CardContent>
           </Card>
 
-          {/* 平均 ROI 卡片 */}
-          <Card className="hover:shadow-lg transition-shadow">
+          {/* 平均回本进度 */}
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">平均 ROI</CardTitle>
+              <CardTitle className="text-sm font-medium">平均回本进度</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className={cn(
-                "text-2xl font-bold",
-                stats.averageROI >= 0 ? "text-green-600" : "text-red-600"
-              )}>
-                {stats.averageROI >= 0 ? '+' : ''}{stats.averageROI.toFixed(1)}%
+              <div
+                className={cn(
+                  'text-xl font-semibold tabular-nums tracking-tight',
+                  stats.averagePaybackProgress >= 100 ? 'text-green-600' : 'text-foreground'
+                )}
+              >
+                {stats.averagePaybackProgress.toFixed(1)}%
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                所有资产的平均投资回报率
+                各资产回本比例（%）算术平均，可超过 100
               </p>
             </CardContent>
           </Card>
@@ -501,11 +498,11 @@ export function ItemList() {
       {/* 筛选区域 */}
       {items.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>筛选</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">筛选</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
               {/* 1. 品类筛选 - 最粗粒度，最先选择 */}
               <div className="space-y-2">
                 <Label htmlFor="category">品类</Label>
@@ -596,16 +593,16 @@ export function ItemList() {
         </Card>
       ) : (
         <Card className="min-w-0">
-          <CardHeader>
+          <CardHeader className="border-b border-border/50 pb-4">
             <CardTitle>资产列表</CardTitle>
             <CardDescription>共 {items.length} 件设备{filteredItems.length !== items.length ? `，筛选后显示 ${filteredItems.length} 件` : ''}</CardDescription>
           </CardHeader>
-          <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
+          <CardContent className="min-w-0 px-0 pb-4 pt-0 sm:px-0">
             {filteredItems.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">没有找到匹配的资产</div>
             ) : (
               <>
-                <div className="space-y-3 lg:hidden">
+                <div className="space-y-3 px-3 pb-2 pt-4 sm:px-4 lg:hidden">
                   {filteredItems.map((item, index) => (
                     <ItemListMobileCard
                       key={item.id}
@@ -621,7 +618,7 @@ export function ItemList() {
                     />
                   ))}
                 </div>
-                <div className="hidden lg:block">
+                <div className="hidden min-w-0 px-3 pb-3 pt-2 sm:px-4 lg:block">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -632,7 +629,7 @@ export function ItemList() {
                         <TableHead>购买成本</TableHead>
                         <TableHead>总收入</TableHead>
                         <TableHead>净收益</TableHead>
-                        <TableHead>ROI</TableHead>
+                        <TableHead>回本</TableHead>
                         <TableHead>状态</TableHead>
                         <TableHead className="text-right">操作</TableHead>
                         <TableHead className="text-right">删除</TableHead>
@@ -640,8 +637,8 @@ export function ItemList() {
                     </TableHeader>
                     <TableBody>
                       {filteredItems.map((item, index) => {
-                        const roiPercent = item.roi || 0
-                        const roiDisplay = `${roiPercent >= 0 ? '+' : ''}${roiPercent.toFixed(1)}%`
+                        const paybackPct = item.payback_progress_pct ?? 0
+                        const paybackDisplay = `${paybackPct.toFixed(1)}%`
 
                         return (
                           <TableRow key={item.id}>
@@ -676,14 +673,48 @@ export function ItemList() {
                               {formatCurrency(item.net_profit || 0)}
                             </TableCell>
                             <TableCell>
-                              <div className="min-w-[150px] space-y-2">
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className={roiPercent >= 0 ? 'text-green-600' : 'text-red-600'}>{roiDisplay}</span>
+                              <div className="min-w-0 max-w-[11rem] space-y-2 sm:max-w-[12rem]">
+                                <div className="flex items-start justify-between gap-2 text-sm">
+                                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                                    <span
+                                      className={cn(
+                                        'font-medium tabular-nums',
+                                        paybackPct >= 100
+                                          ? 'text-green-600'
+                                          : paybackPct > 0
+                                            ? 'text-foreground'
+                                            : 'text-muted-foreground'
+                                      )}
+                                    >
+                                      {paybackDisplay}
+                                    </span>
+                                    {paybackPct >= 100 ? (
+                                      <Badge
+                                        variant="secondary"
+                                        className="shrink-0 px-1.5 py-0 text-[10px] font-normal text-green-700"
+                                      >
+                                        已回本
+                                      </Badge>
+                                    ) : null}
+                                  </div>
                                   <TrendingUp
-                                    className={`h-4 w-4 ${roiPercent >= 0 ? 'text-green-600' : 'rotate-180 text-red-600'}`}
+                                    className={cn(
+                                      'mt-0.5 h-4 w-4 shrink-0',
+                                      paybackPct >= 100
+                                        ? 'text-green-600'
+                                        : paybackPct > 0
+                                          ? 'text-muted-foreground'
+                                          : 'text-muted-foreground/60'
+                                    )}
                                   />
                                 </div>
-                                <Progress value={Math.min(Math.max(roiPercent, 0), 100)} className="h-2" />
+                                <Progress
+                                  value={clampPaybackForBar(paybackPct)}
+                                  className={cn(
+                                    'h-2',
+                                    paybackPct >= 100 && '[&>*]:bg-green-600'
+                                  )}
+                                />
                               </div>
                             </TableCell>
                             <TableCell>

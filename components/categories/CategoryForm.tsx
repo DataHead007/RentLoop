@@ -56,13 +56,13 @@ export function CategoryForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-5 sm:space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>品类信息</CardTitle>
           <CardDescription>填写品类的基本信息</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">品类名称 *</Label>
             <Input

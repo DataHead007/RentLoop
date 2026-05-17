@@ -18,13 +18,28 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { TrendingUp, TrendingDown, Plus, Trash2, Edit, Sparkles, Filter, Package, AlertCircle } from 'lucide-react'
-import type { Transaction, BusinessLine } from '@/lib/types/database'
+import type { Transaction } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
 import { TransactionListMobileCard } from './TransactionListMobileCard'
+import {
+  type TransactionScopeFilter,
+  SCOPE_LABEL,
+  SCOPE_ORDER,
+  scopeToQueryParams,
+} from '@/lib/transactions/scopeFilter'
+
+/** 「全部」模式下对照卡片用的细分 scope（不含 all / creator 合计） */
+const BREAKDOWN_SCOPES: TransactionScopeFilter[] = [
+  'rental',
+  'badminton',
+  'creator:youtube',
+  'creator:wechat_video',
+  'creator:xiaohongshu',
+]
 
 interface TransactionStats {
   totalIncome: number
@@ -33,7 +48,7 @@ interface TransactionStats {
   transactionCount: number
 }
 
-export function TransactionList() {
+export function TransactionList({ initialScope = 'all' }: { initialScope?: TransactionScopeFilter }) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [stats, setStats] = useState<TransactionStats>({
     totalIncome: 0,
@@ -48,10 +63,10 @@ export function TransactionList() {
   const [deleting, setDeleting] = useState(false)
   
   // 统计范围状态（同时控制统计和交易列表）；默认全部，与各业务线汇总一起看
-  const [statsBusinessLine, setStatsBusinessLine] = useState<'all' | BusinessLine>('all')
-  /** 仅在「全部」时加载：各业务线小计（便于对照，点击可钻取） */
+  const [statsScope, setStatsScope] = useState<TransactionScopeFilter>(initialScope)
+  /** 仅在「全部」时加载：各板块/渠道小计（便于对照，点击可钻取） */
   const [lineBreakdown, setLineBreakdown] = useState<
-    Partial<Record<BusinessLine, { income: number; expense: number; net: number }>>
+    Partial<Record<TransactionScopeFilter, { income: number; expense: number; net: number }>>
   >({})
   const [lineBreakdownLoading, setLineBreakdownLoading] = useState(false)
   const [categories, setCategories] = useState<string[]>([])
@@ -84,7 +99,7 @@ export function TransactionList() {
   useEffect(() => {
     setLoadError(null)
     const controller = new AbortController()
-    
+
     Promise.all([
       loadTransactions(controller.signal),
       loadStats(controller.signal),
@@ -95,34 +110,34 @@ export function TransactionList() {
         console.error('Failed to load transaction data:', error)
       }
     })
-    
-    // Cleanup: abort any in-flight requests when filter changes or component unmounts
+
     return () => controller.abort()
-  }, [statsBusinessLine])
+  }, [statsScope])
 
   useEffect(() => {
-    if (statsBusinessLine !== 'all') {
+    if (statsScope !== 'all') {
       setLineBreakdown({})
       setLineBreakdownLoading(false)
       return
     }
-    const lines: BusinessLine[] = ['rental', 'badminton', 'youtube', 'wechat_video']
     const ac = new AbortController()
     setLineBreakdownLoading(true)
     Promise.all(
-      lines.map((bl) =>
+      BREAKDOWN_SCOPES.map((scope) =>
         apiFetch<{
           totalIncome?: number
           totalExpense?: number
           netProfit?: number
-        }>(`/api/transactions/stats?businessLine=${bl}`, { signal: ac.signal })
+        }>(`/api/transactions/stats?${scopeToQueryParams(scope).toString()}`, { signal: ac.signal })
       )
     )
       .then((rows) => {
-        const next: Partial<Record<BusinessLine, { income: number; expense: number; net: number }>> = {}
-        lines.forEach((bl, i) => {
+        const next: Partial<
+          Record<TransactionScopeFilter, { income: number; expense: number; net: number }>
+        > = {}
+        BREAKDOWN_SCOPES.forEach((scope, i) => {
           const d = rows[i]
-          next[bl] = {
+          next[scope] = {
             income: Number(d?.totalIncome) || 0,
             expense: Number(d?.totalExpense) || 0,
             net: Number(d?.netProfit) || 0,
@@ -137,7 +152,7 @@ export function TransactionList() {
       .finally(() => setLineBreakdownLoading(false))
 
     return () => ac.abort()
-  }, [statsBusinessLine])
+  }, [statsScope])
 
   // 监听订单更新事件，自动刷新交易列表和统计数据
   useEffect(() => {
@@ -154,7 +169,7 @@ export function TransactionList() {
       window.removeEventListener('orderUpdated', handleOrderUpdated)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [statsBusinessLine])
+  }, [statsScope])
   
   // 加载资产估值数据
   useEffect(() => {
@@ -169,17 +184,18 @@ export function TransactionList() {
   async function loadTransactions(signal?: AbortSignal) {
     try {
       setLoading(true)
-      const params = new URLSearchParams()
-      
-      // 使用统计范围来筛选交易列表
-      if (statsBusinessLine !== 'all') {
-        params.append('businessLine', statsBusinessLine)
-      }
-
+      const params = scopeToQueryParams(statsScope)
       const response = await fetch(`/api/transactions?${params.toString()}`, { signal })
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Failed to fetch transactions')
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string
+          errorDetail?: { message?: string; code?: string }
+        }
+        const msg =
+          (typeof errorData.errorDetail?.message === 'string' && errorData.errorDetail.message.trim()) ||
+          (typeof errorData.error === 'string' && errorData.error) ||
+          'Failed to fetch transactions'
+        throw new Error(msg)
       }
       const data = await response.json()
       
@@ -216,13 +232,7 @@ export function TransactionList() {
   async function loadStats(signal?: AbortSignal) {
     try {
       setStatsLoading(true)
-      const params = new URLSearchParams()
-      
-      // 只使用统计范围筛选
-      if (statsBusinessLine !== 'all') {
-        params.append('businessLine', statsBusinessLine)
-      }
-
+      const params = scopeToQueryParams(statsScope)
       const data = await apiFetch<any>(`/api/transactions/stats?${params.toString()}`, { signal })
       
       // 验证数据格式
@@ -380,18 +390,18 @@ export function TransactionList() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">交易记录</h2>
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">交易记录</h2>
           <p className="text-muted-foreground">管理所有收入和支出记录</p>
         </div>
         <Button asChild className="w-full shrink-0 sm:w-auto">
           <Link
             href={
-              statsBusinessLine === 'all'
+              statsScope === 'all'
                 ? '/transactions/new'
-                : `/transactions/new?businessLine=${statsBusinessLine}`
+                : `/transactions/new?${scopeToQueryParams(statsScope).toString()}`
             }
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -420,60 +430,46 @@ export function TransactionList() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground shrink-0">统计范围：</span>
           <div className="flex flex-wrap rounded-lg border bg-muted/50 p-0.5 gap-0.5">
-            {(['all', 'rental', 'badminton', 'youtube', 'wechat_video'] as const).map((bl) => (
+            {SCOPE_ORDER.map((scope) => (
               <button
-                key={bl}
+                key={scope}
                 type="button"
-                onClick={() => setStatsBusinessLine(bl)}
+                onClick={() => setStatsScope(scope)}
                 className={cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  statsBusinessLine === bl ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
+                  'min-h-10 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                  statsScope === scope
+                    ? 'bg-background shadow'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                {bl === 'all'
-                  ? '全部'
-                  : bl === 'rental'
-                    ? '租赁业务'
-                    : bl === 'badminton'
-                      ? '羽毛球副业'
-                      : bl === 'youtube'
-                        ? 'YouTube频道'
-                        : '微信视频号'}
+                {SCOPE_LABEL[scope]}
               </button>
             ))}
           </div>
         </div>
         <p className="text-xs text-muted-foreground pl-0 sm:pl-[4.5rem]">
-          默认展示全部业务线汇总；点选某一业务线后，下方卡片与表格仅含该线。新增交易会带上当前选中的业务线。
+          三大板块：租赁、羽毛球、自媒体（下含 YouTube / 微信视频号 / 小红书）。点选后下方列表与统计仅含该范围。
         </p>
       </div>
 
-      {statsBusinessLine === 'all' && (
+      {statsScope === 'all' && (
         <Card className={cn(lineBreakdownLoading && 'opacity-70')}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">各业务线对照</CardTitle>
-            <CardDescription>点击某一卡片可查看该线交易明细与统计</CardDescription>
+            <CardTitle className="text-base">各板块/渠道对照</CardTitle>
+            <CardDescription>点击某一卡片可钻取该范围交易明细与统计</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {(['rental', 'badminton', 'youtube', 'wechat_video'] as const).map((bl) => {
-                const row = lineBreakdown[bl]
-                const label =
-                  bl === 'rental'
-                    ? '租赁业务'
-                    : bl === 'badminton'
-                      ? '羽毛球副业'
-                      : bl === 'youtube'
-                        ? 'YouTube'
-                        : '微信视频号'
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {BREAKDOWN_SCOPES.map((scope) => {
+                const row = lineBreakdown[scope]
                 return (
                   <button
-                    key={bl}
+                    key={scope}
                     type="button"
-                    onClick={() => setStatsBusinessLine(bl)}
+                    onClick={() => setStatsScope(scope)}
                     className="rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent/50 hover:border-primary/30"
                   >
-                    <div className="text-sm font-medium">{label}</div>
+                    <div className="text-sm font-medium">{SCOPE_LABEL[scope]}</div>
                     <div
                       className={cn(
                         'mt-1 text-lg font-semibold tabular-nums',
@@ -494,7 +490,7 @@ export function TransactionList() {
       )}
 
       {/* 统计卡片 */}
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-5">
         <Card className={cn(statsLoading && "opacity-60")}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">总收入</CardTitle>
@@ -502,7 +498,7 @@ export function TransactionList() {
           </CardHeader>
           <CardContent>
             <div className={cn(
-              "text-2xl font-bold text-green-600",
+              "text-2xl font-semibold tabular-nums text-green-600",
               statsLoading && "animate-pulse"
             )}>
               {formatCurrency(stats.totalIncome)}
@@ -517,7 +513,7 @@ export function TransactionList() {
           </CardHeader>
           <CardContent>
             <div className={cn(
-              "text-2xl font-bold text-red-600",
+              "text-2xl font-semibold tabular-nums text-red-600",
               statsLoading && "animate-pulse"
             )}>
               {formatCurrency(stats.totalExpense)}
@@ -532,12 +528,13 @@ export function TransactionList() {
           </CardHeader>
           <CardContent>
             <div className={cn(
-              "text-2xl font-bold",
+              "text-2xl font-semibold tabular-nums",
               stats.netProfit >= 0 ? "text-green-600" : "text-red-600",
               statsLoading && "animate-pulse"
             )}>
               {formatCurrency(stats.netProfit)}
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">经营口径（已排除融资放款入账、归还借款本金）</p>
           </CardContent>
         </Card>
         
@@ -548,7 +545,7 @@ export function TransactionList() {
           </CardHeader>
           <CardContent>
             <div className={cn(
-              "text-2xl font-bold",
+              "text-2xl font-semibold tabular-nums",
               statsLoading && "animate-pulse"
             )}>
               {stats.transactionCount}
@@ -557,7 +554,7 @@ export function TransactionList() {
         </Card>
         
         {/* 资产预估残值 - 仅显示租赁业务或全部时 */}
-        {(statsBusinessLine === 'rental' || statsBusinessLine === 'all') && (
+        {(statsScope === 'rental' || statsScope === 'all') && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">资产预估残值</CardTitle>
@@ -567,7 +564,7 @@ export function TransactionList() {
               <div className="space-y-2">
                 <div className="flex items-baseline gap-2">
                   <span className="text-xs text-muted-foreground">资产总值：</span>
-                  <span className="text-lg font-bold">
+                  <span className="text-lg font-semibold tabular-nums">
                     {formatCurrency(assetsValue.totalPurchasePrice)}
                   </span>
                 </div>
@@ -600,7 +597,7 @@ export function TransactionList() {
                 <div className="flex items-baseline gap-2">
                   <span className="text-xs text-muted-foreground">预估残值：</span>
                   <span className={cn(
-                    "text-lg font-bold",
+                    "text-lg font-semibold tabular-nums",
                     estimatedResidualValue >= 0 ? "text-blue-600" : "text-muted-foreground"
                   )}>
                     {formatCurrency(estimatedResidualValue)}
@@ -610,7 +607,7 @@ export function TransactionList() {
                   <span className="text-xs text-muted-foreground">预期总收益：</span>
                   <div className="flex flex-col gap-0.5">
                     <span className={cn(
-                      "text-lg font-bold",
+                      "text-lg font-semibold tabular-nums",
                       expectedTotalProfit >= 0 ? "text-green-600" : "text-red-600"
                     )}>
                       {formatCurrency(expectedTotalProfit)}
@@ -661,7 +658,7 @@ export function TransactionList() {
                 />
               ))}
             </div>
-            <div className="hidden lg:block">
+            <div className="hidden min-w-0 lg:block">
             <Table>
               <TableHeader>
                 <TableRow>

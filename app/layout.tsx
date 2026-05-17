@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/layout/Navbar";
+import { AppChrome } from "@/components/layout/AppChrome";
 import { DisableNumberInputWheel } from "@/components/layout/DisableNumberInputWheel";
 import { RegisterServiceWorker } from "@/components/layout/RegisterServiceWorker";
 import { Toaster } from "@/components/ui/sonner";
@@ -19,8 +20,14 @@ export const metadata: Metadata = {
   },
 };
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
 export const viewport: Viewport = {
-  themeColor: "#2563eb",
+  themeColor: "#5E6AD2",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
@@ -33,12 +40,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
-      <body className="font-sans antialiased">
+    <html lang="zh-CN" className={inter.variable}>
+      <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <RegisterServiceWorker />
         <DisableNumberInputWheel />
-        <Navbar />
-        {children}
+        <AppChrome>{children}</AppChrome>
         <Toaster />
       </body>
     </html>

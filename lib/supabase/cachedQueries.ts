@@ -121,6 +121,14 @@ export async function getItemsWithStatsCached(): Promise<ItemWithStats[]> {
       net_profit: 0,
       total_days_rented: 0,
       roi: 0,
+      payback_progress_pct: 0,
+      payback_excess_amount: 0,
+      payback_remaining: 0,
+      financing_disbursement_total: 0,
+      owner_equity_purchase: 0,
+      operating_surplus: 0,
+      effective_purchase_cost: 0,
+      financing_principal_remaining: 0,
     }))
   }
 }

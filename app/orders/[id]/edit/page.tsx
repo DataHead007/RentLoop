@@ -44,7 +44,7 @@ export default function EditOrderPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto min-w-0 w-full max-w-5xl px-4 py-8 sm:px-6">
+      <div className="container mx-auto min-w-0 w-full max-w-5xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
         <Card>
           <CardContent className="py-12">
             <div className="text-center text-muted-foreground">加载中...</div>
@@ -56,7 +56,7 @@ export default function EditOrderPage() {
 
   if (!order) {
     return (
-      <div className="container mx-auto min-w-0 w-full max-w-5xl px-4 py-8 sm:px-6">
+      <div className="container mx-auto min-w-0 w-full max-w-5xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
         <Card>
           <CardContent className="py-12">
             <div className="text-center">
@@ -74,9 +74,9 @@ export default function EditOrderPage() {
   const isBadminton = (order as any).order_type === 'badminton'
 
   return (
-    <div className="container mx-auto min-w-0 w-full max-w-5xl px-4 py-8 sm:px-6">
+    <div className="container mx-auto min-w-0 w-full max-w-5xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">编辑订单</h1>
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">编辑订单</h1>
         <p className="text-muted-foreground">
           {isBadminton ? '修改羽毛球副业订单信息' : '修改租赁订单信息'}
         </p>

@@ -97,23 +97,21 @@ export function AccountBindingList() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">账号绑定管理</h2>
-          <p className="text-muted-foreground">管理数字版游戏账号与设备的绑定关系</p>
-        </div>
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">账号绑定管理</h2>
+        <p className="text-sm text-muted-foreground sm:text-base">管理数字版游戏账号与设备的绑定关系</p>
       </div>
 
       {/* 统计卡片 */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">总绑定记录</CardTitle>
             <LinkIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-2xl font-semibold tabular-nums">{stats.total}</div>
             <p className="text-xs text-muted-foreground">所有历史绑定记录</p>
           </CardContent>
         </Card>
@@ -123,7 +121,7 @@ export function AccountBindingList() {
             <Gamepad2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+            <div className="text-2xl font-semibold tabular-nums text-green-600">{stats.active}</div>
             <p className="text-xs text-muted-foreground">正在使用的绑定</p>
           </CardContent>
         </Card>
@@ -133,7 +131,7 @@ export function AccountBindingList() {
             <X className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-500">{stats.ended}</div>
+            <div className="text-2xl font-semibold tabular-nums text-muted-foreground">{stats.ended}</div>
             <p className="text-xs text-muted-foreground">历史绑定记录</p>
           </CardContent>
         </Card>
@@ -145,8 +143,8 @@ export function AccountBindingList() {
           <CardDescription>共 {filteredBindings.length} 条记录</CardDescription>
         </CardHeader>
         <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="relative flex-1">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div className="relative min-w-0 flex-1">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="搜索游戏账号、设备名称..."
@@ -156,7 +154,7 @@ export function AccountBindingList() {
               />
             </div>
             <Select value={filterStatus} onValueChange={(value: 'all' | 'active' | 'ended') => setFilterStatus(value)}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue placeholder="筛选状态" />
               </SelectTrigger>
               <SelectContent>
@@ -182,7 +180,7 @@ export function AccountBindingList() {
                   <AccountBindingListMobileCard key={binding.id} binding={binding} />
                 ))}
               </div>
-              <div className="hidden lg:block">
+              <div className="hidden min-w-0 lg:block">
                 <Table>
                   <TableHeader>
                     <TableRow>

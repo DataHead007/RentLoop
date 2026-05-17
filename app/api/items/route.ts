@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getItemsWithStats, createItem, deleteItem, createTransaction, getItemsAvailableForDateRange, getItemsWithOccupancyInfo } from '@/lib/supabase/queries'
+import { normalizeItemLiquidationPatch } from '@/lib/items/normalizeItemLiquidationPatch'
 import { apiError } from '@/lib/api/response'
 
 export async function GET(request: Request) {
@@ -42,7 +43,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const item = await createItem(body)
+    const normalizedInsert = normalizeItemLiquidationPatch(body, null)
+    let item = await createItem(normalizedInsert as Parameters<typeof createItem>[0])
     
     // 自动创建购买支出交易记录
     if (item.purchase_price && item.purchase_price > 0 && item.purchase_date) {

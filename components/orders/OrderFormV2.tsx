@@ -1081,7 +1081,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
   }
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-5 sm:space-y-6">
       {/* 客户信息和租赁日期 */}
       <Card>
         <CardHeader>
@@ -1090,7 +1090,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
             提示：可在"客户姓名"字段粘贴包含姓名、电话、地址的完整信息，系统会自动解析并填充到相应字段
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           {aiToastMessage && (
             <Alert variant={aiToastMessage.includes('未找到') ? 'destructive' : 'default'} className="py-2">
               <AlertDescription>{aiToastMessage}</AlertDescription>
@@ -1399,7 +1399,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           {formData.order_items.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               还没有添加订单项，请点击上方"添加"按钮
@@ -1415,7 +1415,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
               const calculatedDailyRate = calculateDailyRate(item.subtotal, days)
 
               return (
-                <div key={index} data-order-item-index={index} className="space-y-4 rounded-lg border p-3 sm:p-4">
+                <div key={index} data-order-item-index={index} className="space-y-3 sm:space-y-4 rounded-lg border p-3 sm:p-4">
                   <div className="flex items-center justify-between">
                     <h4 className="font-medium">订单项 #{index + 1}</h4>
                     <div className="flex items-center gap-1">
@@ -1804,9 +1804,9 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
             </div>
           </CardHeader>
           <CollapsibleContent>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           {formData.third_party_rentals.map((rental, index) => (
-            <div key={index} className="space-y-4 rounded-lg border p-3 sm:p-4">
+            <div key={index} className="space-y-3 sm:space-y-4 rounded-lg border p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">第三方租赁 #{index + 1}</h4>
                 <Button
@@ -1960,9 +1960,9 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
             </div>
           </CardHeader>
           <CollapsibleContent>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           {formData.shipping_fees.map((fee, index) => (
-            <div key={index} className="space-y-4 rounded-lg border p-3 sm:p-4">
+            <div key={index} className="space-y-3 sm:space-y-4 rounded-lg border p-3 sm:p-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">物流费用 #{index + 1}</h4>
                 <Button
@@ -2061,7 +2061,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
           <CardContent className="space-y-2">
             <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-base sm:text-lg">
               <span className="min-w-0 shrink text-muted-foreground">总租金</span>
-              <span className="font-bold tabular-nums">{formatCurrency(totalAmount)}</span>
+              <span className="font-semibold tabular-nums">{formatCurrency(totalAmount)}</span>
             </div>
             {totalShippingCost > 0 && (
               <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 text-base sm:text-lg">
@@ -2088,7 +2088,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
             )}
             <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 border-t pt-2 text-base sm:text-lg">
               <span className="min-w-0 shrink font-medium">总押金（客户）</span>
-              <span className="font-bold tabular-nums">{formatCurrency(totalDeposit)}</span>
+              <span className="font-semibold tabular-nums">{formatCurrency(totalDeposit)}</span>
             </div>
           </CardContent>
         </Card>

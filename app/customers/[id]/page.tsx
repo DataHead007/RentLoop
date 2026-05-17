@@ -94,17 +94,17 @@ export default function CustomerDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" asChild>
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <Button variant="ghost" size="sm" className="w-fit shrink-0" asChild>
           <Link href="/customers">
             <ArrowLeft className="mr-2 h-4 w-4" />
             返回
           </Link>
         </Button>
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">客户详情</h2>
-          <p className="text-muted-foreground">查看客户信息和订单历史</p>
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">客户详情</h2>
+          <p className="text-sm text-muted-foreground sm:text-base">查看客户信息和订单历史</p>
         </div>
       </div>
 
@@ -190,13 +190,48 @@ export default function CustomerDetailPage() {
 
       {/* 订单历史 */}
       {customer.orders && customer.orders.length > 0 ? (
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>订单历史</CardTitle>
             <CardDescription>该客户的所有订单记录</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="rounded-md border">
+          <CardContent className="min-w-0">
+            <div className="space-y-3 lg:hidden">
+              {customer.orders.map((order: any) => (
+                <div
+                  key={order.id}
+                  className="rounded-lg border border-border/60 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">
+                        {order.order_number || order.id.slice(0, 8)}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {formatDateShort(new Date(order.start_date))} ~{' '}
+                        {formatDateShort(new Date(order.end_date))}
+                      </p>
+                    </div>
+                    <Badge variant={getStatusBadgeVariant(order.status)} className="shrink-0">
+                      {getStatusLabel(order.status)}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="text-muted-foreground">
+                      下单 {formatDateShort(new Date(order.created_at))}
+                    </span>
+                    <span className="font-semibold tabular-nums">
+                      {formatCurrency(order.total_amount || 0)}
+                    </span>
+                  </div>
+                  <Button asChild variant="outline" size="sm" className="mt-3 w-full sm:w-auto">
+                    <Link href={`/orders/${order.id}`}>查看订单</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="hidden min-w-0 lg:block">
+            <div className="min-w-0 overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -237,6 +272,7 @@ export default function CustomerDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
             </div>
           </CardContent>
         </Card>

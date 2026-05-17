@@ -384,21 +384,21 @@ export function OrderDetail() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+    <div className="space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">订单详情</h2>
-            <p className="text-muted-foreground">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">订单详情</h2>
+            <p className="text-sm text-muted-foreground sm:text-base">
               {order.order_number ? `订单编号: ${order.order_number}` : `订单 ID: ${order.id.slice(0, 8)}...`}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <Badge variant={getStatusBadgeVariant(order.status)}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={getStatusBadgeVariant(order.status)} className="shrink-0">
             {getStatusLabel(order.status)}
           </Badge>
           <Button 
@@ -534,6 +534,34 @@ export function OrderDetail() {
                 {badmintonLines && badmintonLines.length > 0 && (
                   <div>
                     <Label className="text-sm text-muted-foreground mb-2 block">收支明细</Label>
+                    <div className="space-y-3 lg:hidden">
+                      {badmintonLines.map((line: any) => (
+                        <div
+                          key={line.id}
+                          className="rounded-lg border border-border/60 bg-card p-3 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge variant={line.line_type === 'income' ? 'success' : 'destructive'}>
+                              {line.line_type === 'income' ? '收入' : '支出'}
+                            </Badge>
+                            <span
+                              className={cn(
+                                'font-semibold tabular-nums',
+                                line.line_type === 'income' ? 'text-green-600' : 'text-red-600'
+                              )}
+                            >
+                              {line.line_type === 'income' ? '+' : '-'}
+                              {formatCurrency(Math.abs(Number(line.amount) || 0))}
+                            </span>
+                          </div>
+                          <p className="mt-2 font-medium">{line.category}</p>
+                          {line.notes ? (
+                            <p className="mt-1 text-muted-foreground">{line.notes}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="hidden lg:block overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -560,7 +588,8 @@ export function OrderDetail() {
                         ))}
                       </TableBody>
                     </Table>
-                    <div className="mt-4 flex gap-4 text-sm">
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
                       <span className="text-muted-foreground">
                         收入合计：<span className="font-medium text-green-600">
                           {formatCurrency(
@@ -598,7 +627,8 @@ export function OrderDetail() {
             </CardHeader>
             <CardContent>
               {order.order_items && order.order_items.length > 0 ? (
-                <Table>
+                <div className="min-w-0 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+                <Table className="min-w-[42rem]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>设备名称</TableHead>
@@ -742,6 +772,7 @@ export function OrderDetail() {
                     })}
                   </TableBody>
                 </Table>
+                </div>
               ) : (
                 <p className="text-muted-foreground">暂无订单项</p>
               )}
@@ -844,7 +875,7 @@ export function OrderDetail() {
                     </Button>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold mb-1">{formatDateShort(serviceDate)}</div>
+                    <div className="text-2xl font-semibold tabular-nums mb-1">{formatDateShort(serviceDate)}</div>
                     {timeRange && <p className="text-sm text-muted-foreground">时间段：{timeRange}</p>}
                   </CardContent>
                 </Card>
@@ -1025,7 +1056,7 @@ export function OrderDetail() {
                   </Button>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold mb-1">{formatDateShort(order.start_date)}</div>
+                  <div className="text-2xl font-semibold tabular-nums mb-1">{formatDateShort(order.start_date)}</div>
                   {isNotShipped ? (
                     <p className="text-sm text-blue-700">
                       {daysUntilStart === 0 ? '今天需要发货' : `还有 ${daysUntilStart} 天开始`}
@@ -1055,7 +1086,7 @@ export function OrderDetail() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold mb-1">{formatDateShort(order.end_date)}</div>
+                  <div className="text-2xl font-semibold tabular-nums mb-1">{formatDateShort(order.end_date)}</div>
                   {isInProgress ? (
                     <p className={cn('text-sm', daysUntilEnd <= 2 ? 'text-red-600 font-semibold' : 'text-orange-700')}>
                       {daysUntilEnd === 0 ? '今天到期，需要催还' : `还有 ${daysUntilEnd} 天到期`}
@@ -1448,7 +1479,8 @@ export function OrderDetail() {
               <CardDescription>可点击行末编辑修改类型、物流公司、单号、金额、备注</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
+              <div className="min-w-0 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+              <Table className="min-w-[36rem]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>类型</TableHead>
@@ -1595,6 +1627,7 @@ export function OrderDetail() {
                   })}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         )}

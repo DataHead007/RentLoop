@@ -309,13 +309,13 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
   }
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-5 sm:space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>客户与服务信息</CardTitle>
           <CardDescription>填写客户及本次服务的基本信息</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="customer_name">客户姓名 *</Label>
@@ -512,7 +512,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
           <CardTitle>收支明细</CardTitle>
           <CardDescription>收入：教练费、陪练费、比赛奖金；支出：场地费、停车费、比赛报名费</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           {lines.map((line, i) => (
             <div key={i} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-2">
               <div className="w-full space-y-1 sm:w-24 sm:shrink-0">

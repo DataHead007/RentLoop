@@ -42,6 +42,7 @@
 22. `检查和修复物流费用数据.sql`
 23. `add_transaction_summary_rpc.sql`
 24. `setup_storage_permissions.sql`
+25. **`migration_business_plates.sql`**（三大板块 + 自媒体渠道；**替换** `transactions.business_line`，并重定义 `get_transaction_summary`；执行前请备份）
 
 > 说明：`删除orders_item_id列.sql`、`检查和修复物流费用数据.sql` 属于“运维/数据修复类脚本”，执行前建议先备份。
 
@@ -57,7 +58,7 @@
 
 ## 必做自检（每次迁移后）
 
-1. `transactions.business_line` 约束包含 `wechat_video`
+1. `transactions` 已迁移为 `business_plate` + `creator_channel`（租赁全局池仅统计 `business_plate = rental`）
 2. `orders` + `order_items` 查询可正常返回
 3. `transaction_change_events` 表与触发器存在
 4. 创建一条交易、订单、资产，确认 API 不返回 500

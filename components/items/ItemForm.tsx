@@ -11,7 +11,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { CalendarIcon, Loader2, Upload, X, FileText, Plus, Edit, Sparkles, Link as LinkIcon, Image as ImageIcon } from 'lucide-react'
-import { formatDateShort, formatDateToLocalString } from '@/lib/utils/format'
+import { formatCurrency, formatDateShort, formatDateToLocalString } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import type { Category } from '@/lib/types/database'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -55,6 +55,8 @@ interface ItemFormProps {
   onSuccess?: () => void
 }
 
+type FundingSource = 'self' | 'loan' | 'mixed'
+
 export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
   const router = useRouter()
   const [categories, setCategories] = useState<Category[]>([])
@@ -68,6 +70,17 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
   const [aiUrlLoading, setAiUrlLoading] = useState(false)
   const [aiUrl, setAiUrl] = useState('')
   const [aiResult, setAiResult] = useState<AiParsedItem | null>(null)
+
+  // 购置资金来源（仅新建资产时使用）
+  const [fundingSource, setFundingSource] = useState<FundingSource>('self')
+  const [loanTitle, setLoanTitle] = useState('')
+  const [loanPrincipalTotal, setLoanPrincipalTotal] = useState('')
+  const [loanAnnualRatePercent, setLoanAnnualRatePercent] = useState('')
+  const [loanRepaymentDayOfMonth, setLoanRepaymentDayOfMonth] = useState('10')
+  const [loanStartDate, setLoanStartDate] = useState('')
+  const [loanNotes, setLoanNotes] = useState('')
+  const [loanStartDateTouched, setLoanStartDateTouched] = useState(false)
+
   const [newIncome, setNewIncome] = useState<HistoricalIncomeData>({
     amount: 0,
     transaction_date: undefined,
@@ -121,6 +134,23 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
       loadItem()
     }
   }, [itemId])
+
+  // 新建资产时：默认起息日跟随购买日期（除非用户手动改过）
+  useEffect(() => {
+    if (itemId) return
+    if (loanStartDateTouched) return
+    if (!formData.purchase_date) return
+    setLoanStartDate(formatDateToLocalString(formData.purchase_date))
+  }, [formData.purchase_date, itemId, loanStartDateTouched])
+
+  // 选择「全部为贷款」时：若未填本金，默认使用购买价（混合模式不自动填充）
+  useEffect(() => {
+    if (itemId) return
+    if (fundingSource !== 'loan') return
+    if (loanPrincipalTotal.trim()) return
+    if (!Number.isFinite(formData.purchase_price) || formData.purchase_price <= 0) return
+    setLoanPrincipalTotal(String(formData.purchase_price))
+  }, [fundingSource, formData.purchase_price, itemId, loanPrincipalTotal])
 
   // 自动更新状态：当填写了出售价格和出售日期时，自动设置为"已售出"
   useEffect(() => {
@@ -254,11 +284,42 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
   async function loadCategories() {
     try {
       const response = await fetch('/api/categories')
-      if (!response.ok) throw new Error('Failed to fetch categories')
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || '品类接口异常')
+      }
       const data = await response.json()
-      setCategories(data)
+      setCategories(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Failed to load categories:', error)
+
+      // 回退方案：从资产列表中提取已使用品类，避免新建资产页完全不可用
+      try {
+        const fallbackResponse = await fetch('/api/items')
+        if (!fallbackResponse.ok) throw new Error('fallback items request failed')
+        const items = await fallbackResponse.json()
+        if (Array.isArray(items)) {
+          const categoryMap = new Map<string, Category>()
+          for (const item of items) {
+            const category = item?.category
+            if (category?.id && category?.name) {
+              categoryMap.set(category.id, category as Category)
+            }
+          }
+          const fallbackCategories = Array.from(categoryMap.values()).sort((a, b) =>
+            a.name.localeCompare(b.name, 'zh-CN')
+          )
+          setCategories(fallbackCategories)
+          return
+        }
+      } catch (fallbackError) {
+        console.error('Failed to load fallback categories:', fallbackError)
+      }
+
+      setCategories([])
+      alert(
+        `品类加载失败：${error instanceof Error ? error.message : '未知错误'}。请刷新页面重试，或先进入“品类管理”检查接口是否正常。`
+      )
     }
   }
 
@@ -336,6 +397,44 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
       return
     }
 
+    // 新建资产且选择贷款或混合：校验融资字段
+    if (!itemId && (fundingSource === 'loan' || fundingSource === 'mixed')) {
+      const p = parseFloat(loanPrincipalTotal)
+      const r = parseFloat(loanAnnualRatePercent)
+      const day = parseInt(loanRepaymentDayOfMonth, 10)
+      if (!Number.isFinite(p) || p <= 0) {
+        alert('请输入有效的借款本金（贷款部分）')
+        return
+      }
+      if (!Number.isFinite(r) || r < 0) {
+        alert('请输入有效的年化利率（%）')
+        return
+      }
+      if (!Number.isInteger(day) || day < 1 || day > 28) {
+        alert('还款日须为 1–28 的整数')
+        return
+      }
+      if (!loanStartDate.trim()) {
+        alert('请填写起息日')
+        return
+      }
+      const purchase = formData.purchase_price
+      if (fundingSource === 'mixed') {
+        if (!Number.isFinite(purchase) || purchase <= 0) {
+          alert('混合购置须填写大于 0 的购买总价')
+          return
+        }
+        if (p >= purchase - 1e-6) {
+          alert('混合购置下，借款本金须小于购买总价（差额为自有资金投入）')
+          return
+        }
+      }
+      if (fundingSource === 'loan' && Number.isFinite(purchase) && purchase > 0 && p > purchase + 1e-6) {
+        alert('借款本金不能大于购买总价')
+        return
+      }
+    }
+
     setLoading(true)
     try {
       const itemData = {
@@ -401,6 +500,35 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
         }
       }
 
+      // 新建资产且选择贷款或混合：创建购置融资记录（失败不阻止主流程）
+      if (!itemId && (fundingSource === 'loan' || fundingSource === 'mixed') && newItemId) {
+        try {
+          const p = parseFloat(loanPrincipalTotal)
+          const r = parseFloat(loanAnnualRatePercent)
+          const day = parseInt(loanRepaymentDayOfMonth, 10)
+          const res = await fetch('/api/financing-loans', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              item_id: newItemId,
+              title: loanTitle.trim() || null,
+              principal_total: p,
+              annual_rate_percent: r,
+              repayment_day_of_month: day,
+              start_date: loanStartDate.trim(),
+              notes: loanNotes.trim() || null,
+            }),
+          })
+          const data = await res.json().catch(() => ({} as any))
+          if (!res.ok) {
+            throw new Error(typeof data?.error === 'string' ? data.error : '创建融资失败')
+          }
+        } catch (err) {
+          console.error('Failed to create financing loan:', err)
+          alert(err instanceof Error ? `资产已创建，但融资创建失败：${err.message}` : '资产已创建，但融资创建失败')
+        }
+      }
+
       if (onSuccess) {
         onSuccess()
       } else {
@@ -415,13 +543,13 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-6" noValidate>
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-5 sm:space-y-6" noValidate>
       <Card>
         <CardHeader>
           <CardTitle>{itemId ? '编辑设备信息' : '设备基本信息'}</CardTitle>
           <CardDescription>{itemId ? '修改设备的基本信息' : '填写设备的基本信息'}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           {!itemId && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -664,7 +792,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
         <CardHeader>
           <CardTitle>购买信息</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="purchase_price">购买价格 (¥) *</Label>
@@ -721,6 +849,164 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
               </Popover>
             </div>
           </div>
+
+          {!itemId && (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3 sm:space-y-4">
+              <div className="space-y-2">
+                <Label>购置资金来源</Label>
+                <Select
+                  value={fundingSource}
+                  onValueChange={(v: FundingSource) => {
+                    setFundingSource(v)
+                    if (v === 'mixed') {
+                      setLoanPrincipalTotal((prev) => {
+                        const pp = formData.purchase_price
+                        const cur = parseFloat(prev)
+                        if (
+                          Number.isFinite(pp) &&
+                          pp > 0 &&
+                          Number.isFinite(cur) &&
+                          Math.abs(cur - pp) < 1e-6
+                        ) {
+                          return ''
+                        }
+                        return prev
+                      })
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择资金来源" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="self">仅自有资金</SelectItem>
+                    <SelectItem value="loan">全部为贷款</SelectItem>
+                    <SelectItem value="mixed">自有资金 + 贷款（混合）</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  选择含贷款时，保存后会自动创建「购置融资」与「融资放款入账」；混合模式下请填写<strong>贷款部分</strong>本金（须小于购买总价）。后续在融资详情按账单确认还款。
+                </p>
+              </div>
+
+              {(fundingSource === 'loan' || fundingSource === 'mixed') && (
+                <div className="space-y-3 sm:space-y-4">
+                  {formData.purchase_price > 0 ? (
+                    <div className="rounded-md border border-border/80 bg-background/80 px-3 py-2 text-sm">
+                      <div className="flex justify-between gap-2 tabular-nums">
+                        <span className="text-muted-foreground">购买总价</span>
+                        <span className="font-medium">{formatCurrency(formData.purchase_price)}</span>
+                      </div>
+                      {(() => {
+                        const loanPart = parseFloat(loanPrincipalTotal)
+                        const ok =
+                          Number.isFinite(loanPart) &&
+                          loanPart > 0 &&
+                          loanPart <= formData.purchase_price + 1e-6
+                        const own = ok ? Math.max(0, formData.purchase_price - loanPart) : null
+                        return (
+                          <div className="mt-2 flex justify-between gap-2 border-t border-border/60 pt-2 tabular-nums">
+                            <span className="text-muted-foreground">自有资金投入（估算）</span>
+                            <span className="font-medium">
+                              {own != null ? formatCurrency(own) : '—'}
+                            </span>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="loan_title">借款名称（可选）</Label>
+                    <Input
+                      id="loan_title"
+                      value={loanTitle}
+                      onChange={(e) => setLoanTitle(e.target.value)}
+                      placeholder="如：招行信用贷-S5M2"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_principal">
+                        借款本金（贷款部分）(¥) *
+                      </Label>
+                      <Input
+                        id="loan_principal"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={loanPrincipalTotal}
+                        onChange={(e) => setLoanPrincipalTotal(e.target.value)}
+                        placeholder={
+                          fundingSource === 'mixed' ? '小于购买总价的贷款金额' : '与银行放款一致，可≤购买总价'
+                        }
+                        required
+                      />
+                      {fundingSource === 'mixed' ? (
+                        <p className="text-xs text-muted-foreground">须严格小于上方购买总价</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">可等于购买总价（全贷）或小于（亦视为混合）</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_rate">年化利率 (%) *</Label>
+                      <Input
+                        id="loan_rate"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={loanAnnualRatePercent}
+                        onChange={(e) => setLoanAnnualRatePercent(e.target.value)}
+                        placeholder="如 4.35"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_day">每月还款日 *</Label>
+                      <Input
+                        id="loan_day"
+                        type="number"
+                        min={1}
+                        max={28}
+                        value={loanRepaymentDayOfMonth}
+                        onChange={(e) => setLoanRepaymentDayOfMonth(e.target.value)}
+                        required
+                      />
+                      <p className="text-xs text-muted-foreground">建议 1–28，避免部分月份无对应日期</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_start">起息日 *</Label>
+                      <Input
+                        id="loan_start"
+                        type="date"
+                        value={loanStartDate}
+                        onChange={(e) => {
+                          setLoanStartDateTouched(true)
+                          setLoanStartDate(e.target.value)
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="loan_notes">备注</Label>
+                    <Textarea
+                      id="loan_notes"
+                      rows={2}
+                      value={loanNotes}
+                      onChange={(e) => setLoanNotes(e.target.value)}
+                      placeholder="可选"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="invoice">购买发票（可选）</Label>
@@ -791,9 +1077,11 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
       <Card>
         <CardHeader>
           <CardTitle>出售信息（可选）</CardTitle>
-          <CardDescription>如果资产已出售，请填写出售信息</CardDescription>
+          <CardDescription>
+            填写出售价与出售日期并保存后，将自动生成类目为「设备出售」的租赁流水，并把状态设为已售出。变卖收入不会自动减少融资剩余本金；若仍有贷款，请在资产详情查看清算提示并在融资页登记还本。
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="sold_price">出售价格 (¥)</Label>
@@ -845,7 +1133,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
         <CardHeader>
           <CardTitle>状态信息</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           <div className="space-y-2">
             <Label htmlFor="status">状态</Label>
             <Select
@@ -888,7 +1176,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-3 sm:space-y-4">
             {historicalIncomes.length > 0 && (
               <div className="space-y-2">
                 <Table>
@@ -951,7 +1239,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
                     {editingIncomeIndex !== null ? '编辑历史收入' : '添加历史收入'}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-3 sm:space-y-4">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="income_amount">金额 (¥) *</Label>

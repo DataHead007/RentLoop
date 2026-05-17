@@ -184,14 +184,15 @@ export function CustomerList() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">客户管理</h2>
-          <p className="text-muted-foreground">查看和管理所有客户档案</p>
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">客户管理</h2>
+          <p className="text-sm text-muted-foreground sm:text-base">查看和管理所有客户档案</p>
         </div>
         <Button
           variant="outline"
+          className="w-full shrink-0 sm:w-auto"
           onClick={checkMissingCustomers}
           disabled={missingCheck.loading}
         >
@@ -201,7 +202,7 @@ export function CustomerList() {
 
       {/* 缺失客户检查结果 */}
       {missingCheck.data && (
-        <Card className="border-orange-200 bg-orange-50">
+        <Card className="border-orange-200/80 bg-orange-50/90">
           <CardHeader>
             <CardTitle className="text-orange-900">缺失客户检查结果</CardTitle>
             <CardDescription>
@@ -209,27 +210,27 @@ export function CustomerList() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-5">
               <div>
                 <p className="text-sm text-muted-foreground">总订单数</p>
-                <p className="text-2xl font-bold">{missingCheck.data.summary.totalOrders}</p>
+                <p className="text-2xl font-semibold tabular-nums">{missingCheck.data.summary.totalOrders}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">有效关联订单</p>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-2xl font-semibold tabular-nums text-green-600">
                   {missingCheck.data.summary.linkedOrders}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">未关联订单</p>
-                <p className="text-2xl font-bold text-orange-600">
+                <p className="text-2xl font-semibold tabular-nums text-orange-600">
                   {missingCheck.data.summary.unlinkedOrders}
                 </p>
               </div>
               {missingCheck.data.summary.invalidCustomerIds > 0 && (
                 <div>
                   <p className="text-sm text-muted-foreground">无效关联</p>
-                  <p className="text-2xl font-bold text-red-600">
+                  <p className="text-2xl font-semibold tabular-nums text-red-600">
                     {missingCheck.data.summary.invalidCustomerIds}
                   </p>
                   <p className="text-xs text-muted-foreground">订单有customer_id但客户不存在</p>
@@ -237,7 +238,7 @@ export function CustomerList() {
               )}
               <div>
                 <p className="text-sm text-muted-foreground">缺失客户数</p>
-                <p className="text-2xl font-bold text-red-600">
+                <p className="text-2xl font-semibold tabular-nums text-red-600">
                   {missingCheck.data.summary.uniqueMissingCustomers}
                 </p>
               </div>
@@ -283,14 +284,14 @@ export function CustomerList() {
 
       {/* 统计卡片 */}
       {customers.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">客户总数</CardTitle>
               <User className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalCustomers}</div>
+              <div className="text-2xl font-semibold tabular-nums">{stats.totalCustomers}</div>
               <p className="text-xs text-muted-foreground">所有客户档案</p>
             </CardContent>
           </Card>
@@ -301,7 +302,7 @@ export function CustomerList() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.totalOrders}</div>
+              <div className="text-2xl font-semibold tabular-nums">{stats.totalOrders}</div>
               <p className="text-xs text-muted-foreground">所有客户订单合计</p>
             </CardContent>
           </Card>
@@ -312,7 +313,7 @@ export function CustomerList() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(stats.totalAmount)}</div>
+              <div className="text-2xl font-semibold tabular-nums">{formatCurrency(stats.totalAmount)}</div>
               <p className="text-xs text-muted-foreground">所有客户消费合计</p>
             </CardContent>
           </Card>
@@ -365,8 +366,8 @@ export function CustomerList() {
                     />
                   ))}
                 </div>
-                <div className="hidden lg:block">
-                  <div className="rounded-md border">
+                <div className="hidden min-w-0 lg:block">
+                  <div className="min-w-0 overflow-x-auto rounded-md border">
                     <Table>
                       <TableHeader>
                         <TableRow>

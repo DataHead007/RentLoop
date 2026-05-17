@@ -51,11 +51,16 @@ export function CategoryList() {
     try {
       setLoading(true)
       const response = await fetch('/api/categories')
-      if (!response.ok) throw new Error('Failed to fetch categories')
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({} as { error?: string }))
+        throw new Error(err.error || '品类加载失败')
+      }
       const data = await response.json()
-      setCategories(data)
+      setCategories(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Failed to load categories:', error)
+      alert(error instanceof Error ? error.message : '品类加载失败，请重试')
+      setCategories([])
     } finally {
       setLoading(false)
     }
@@ -139,13 +144,13 @@ export function CategoryList() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">品类管理</h2>
-          <p className="text-muted-foreground">管理设备品类分类</p>
+    <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">品类管理</h2>
+          <p className="text-sm text-muted-foreground sm:text-base">管理设备品类分类</p>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full shrink-0 sm:w-auto">
           <Link href="/categories/new">
             <Plus className="mr-2 h-4 w-4" />
             新增品类
@@ -191,7 +196,7 @@ export function CategoryList() {
                 />
               ))}
             </div>
-            <div className="hidden lg:block">
+            <div className="hidden min-w-0 lg:block">
               <Table>
                 <TableHeader>
                   <TableRow>

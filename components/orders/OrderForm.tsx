@@ -136,13 +136,13 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
     : { days: 0, totalAmount: 0 }
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
+    <form onSubmit={handleSubmit} className="min-w-0 space-y-5 sm:space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>订单信息</CardTitle>
           <CardDescription>填写订单基本信息</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           <div className="space-y-2">
             <Label htmlFor="item_id">选择设备 *</Label>
             <Select
@@ -266,7 +266,7 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
               </div>
               <div className="flex justify-between text-sm mt-2">
                 <span>总金额：</span>
-                <span className="font-bold text-lg">{formatCurrency(totalAmount)}</span>
+                <span className="text-lg font-semibold tabular-nums">{formatCurrency(totalAmount)}</span>
               </div>
             </div>
           )}
@@ -277,7 +277,7 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
         <CardHeader>
           <CardTitle>客户信息</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 sm:space-y-4">
           <div className="space-y-2">
             <Label htmlFor="customer_name">客户姓名 *</Label>
             <Input
