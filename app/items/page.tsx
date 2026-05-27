@@ -3,7 +3,7 @@ import { ItemList } from '@/components/items/ItemList'
 
 export default function ItemsPage() {
   return (
-    <div className="container mx-auto min-w-0 max-w-full px-3 py-4 sm:px-4 md:px-6 md:py-8">
+    <div className="container mx-auto min-w-0 max-w-full px-3 pt-3 pb-4 sm:px-4 md:px-6 md:pt-4 md:pb-6">
       <Suspense fallback={<div className="animate-pulse h-64 bg-muted rounded" />}>
         <ItemList />
       </Suspense>

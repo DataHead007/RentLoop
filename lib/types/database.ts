@@ -6,6 +6,8 @@ export interface Category {
   id: string
   name: string
   description: string | null
+  /** 租赁资产业务线：game_console | photo_video | audio | photo_printer | other */
+  rental_line: string | null
   created_at: string
   updated_at: string
 }
@@ -78,6 +80,27 @@ export type OrderType = 'rental' | 'badminton'
 export type BadmintonServiceType = '教学' | '陪打' | '比赛' | '组织活动'
 export type BadmintonIncomeCategory = '教练费' | '陪练费' | '比赛奖金'
 export type BadmintonExpenseCategory = '场地费' | '停车费' | '比赛报名费'
+
+export type BadmintonMatchPrizeMode = 'none' | 'cash' | 'in_kind' | 'both'
+
+export interface BadmintonMatchRecord {
+  id: string
+  event_name: string
+  event_date: string
+  location: string
+  event_time: string | null
+  discipline: string
+  discipline_other: string | null
+  result: string | null
+  registration_fee: number
+  prize_mode: BadmintonMatchPrizeMode
+  prize_cash: number | null
+  prize_in_kind_desc: string | null
+  prize_in_kind_value: number | null
+  reflection: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface BadmintonOrderLine {
   id: string
@@ -196,6 +219,8 @@ export interface ShippingFee {
 export interface Transaction {
   id: string
   order_id: string | null
+  /** 由个人参赛记录自动同步的交易 */
+  badminton_match_record_id?: string | null
   item_id: string | null
   type: 'income' | 'expense'
   amount: number

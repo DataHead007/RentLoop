@@ -8,7 +8,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  calendarPopoverContentClass,
+} from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { CalendarIcon, Loader2, Upload, X, FileText, Plus, Edit, Sparkles, Link as LinkIcon, Image as ImageIcon } from 'lucide-react'
 import { formatCurrency, formatDateShort, formatDateToLocalString } from '@/lib/utils/format'
@@ -838,7 +843,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className={calendarPopoverContentClass} align="start" collisionPadding={16}>
                   <Calendar
                     mode="single"
                     selected={formData.purchase_date}
@@ -1115,7 +1120,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className={calendarPopoverContentClass} align="start" collisionPadding={16}>
                   <Calendar
                     mode="single"
                     selected={formData.sale_date}
@@ -1272,7 +1277,7 @@ export function ItemForm({ itemId, onSuccess }: ItemFormProps) {
                             )}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
+                        <PopoverContent className={calendarPopoverContentClass} align="start" collisionPadding={16}>
                           <Calendar
                             mode="single"
                             selected={newIncome.transaction_date}

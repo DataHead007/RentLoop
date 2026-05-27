@@ -8,10 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Loader2 } from 'lucide-react'
+import { RentalLineSelect } from '@/components/categories/RentalLineSelect'
+import type { RentalLine } from '@/lib/categories/rentalLine'
 
 interface CategoryFormData {
   name: string
   description: string
+  rental_line: RentalLine | ''
 }
 
 export function CategoryForm() {
@@ -20,6 +23,7 @@ export function CategoryForm() {
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     description: '',
+    rental_line: '',
   })
 
   async function handleSubmit(e: React.FormEvent) {
@@ -27,6 +31,10 @@ export function CategoryForm() {
     
     if (!formData.name.trim()) {
       alert('请输入品类名称')
+      return
+    }
+    if (!formData.rental_line) {
+      alert('请选择业务线')
       return
     }
 
@@ -38,6 +46,7 @@ export function CategoryForm() {
         body: JSON.stringify({
           name: formData.name.trim(),
           description: formData.description.trim() || null,
+          rental_line: formData.rental_line,
         }),
       })
 
@@ -73,6 +82,12 @@ export function CategoryForm() {
               required
             />
           </div>
+
+          <RentalLineSelect
+            value={formData.rental_line}
+            onChange={(rental_line) => setFormData({ ...formData, rental_line })}
+            required
+          />
 
           <div className="space-y-2">
             <Label htmlFor="description">描述</Label>

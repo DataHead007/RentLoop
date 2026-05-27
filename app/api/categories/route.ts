@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getCategories, createCategory, deleteCategory, getItems } from '@/lib/supabase/queries'
 import { apiError } from '@/lib/api/response'
 import type { Category } from '@/lib/types/database'
+import { isRentalLine } from '@/lib/categories/rentalLine'
 
 export async function GET() {
   try {
@@ -32,7 +33,24 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const category = await createCategory(body)
+    const { name, description, rental_line } = body as {
+      name?: string
+      description?: string | null
+      rental_line?: string
+    }
+
+    if (!name?.trim()) {
+      return apiError('INVALID_REQUEST', '品类名称不能为空', 400)
+    }
+    if (!rental_line || !isRentalLine(rental_line)) {
+      return apiError('INVALID_REQUEST', '请选择有效的业务线', 400)
+    }
+
+    const category = await createCategory({
+      name: name.trim(),
+      description: description?.trim() || null,
+      rental_line,
+    })
     return NextResponse.json(category, { status: 201 })
   } catch (error) {
     console.error('Error creating category:', error)

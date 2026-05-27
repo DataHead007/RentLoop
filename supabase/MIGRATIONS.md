@@ -43,6 +43,7 @@
 23. `add_transaction_summary_rpc.sql`
 24. `setup_storage_permissions.sql`
 25. **`migration_business_plates.sql`**（三大板块 + 自媒体渠道；**替换** `transactions.business_line`，并重定义 `get_transaction_summary`；执行前请备份）
+26. **`migration_category_rental_line.sql`**（品类表 `rental_line`：游戏机 / 摄影摄像 / 音响 / 照片打印机等租赁业务线）
 
 > 说明：`删除orders_item_id列.sql`、`检查和修复物流费用数据.sql` 属于“运维/数据修复类脚本”，执行前建议先备份。
 

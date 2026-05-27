@@ -60,7 +60,7 @@ export default function RentalAlmExclusionsPage() {
   }, [])
 
   return (
-    <div className="container mx-auto min-w-0 max-w-6xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
+    <div className="container mx-auto min-w-0 max-w-6xl px-3 pt-3 pb-4 sm:px-4 md:px-6 md:pt-4 md:pb-6">
       <Link
         href="/transactions"
         className="mb-4 inline-flex min-h-10 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

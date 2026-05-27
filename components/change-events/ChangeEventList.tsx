@@ -8,7 +8,12 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  calendarPopoverContentClass,
+} from '@/components/ui/popover'
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -350,7 +355,7 @@ export function ChangeEventList() {
                         {startDate ? format(startDate, 'yyyy-MM-dd') : '选择日期'}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className={calendarPopoverContentClass} align="start" collisionPadding={16}>
                       <Calendar
                         mode="single"
                         selected={startDate}
@@ -376,7 +381,7 @@ export function ChangeEventList() {
                         {endDate ? format(endDate, 'yyyy-MM-dd') : '选择日期'}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className={calendarPopoverContentClass} align="start" collisionPadding={16}>
                       <Calendar
                         mode="single"
                         selected={endDate}

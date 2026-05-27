@@ -30,6 +30,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Loader2 } from 'lucide-react'
 import { CategoryListMobileCard } from './CategoryListMobileCard'
+import { RentalLineSelect } from '@/components/categories/RentalLineSelect'
+import { getRentalLineForCategory, getRentalLineLabel, type RentalLine } from '@/lib/categories/rentalLine'
 
 export function CategoryList() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -41,6 +43,7 @@ export function CategoryList() {
   const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editRentalLine, setEditRentalLine] = useState<RentalLine | ''>('')
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
@@ -95,6 +98,7 @@ export function CategoryList() {
     setCategoryToEdit(category)
     setEditName(category.name)
     setEditDescription(category.description || '')
+    setEditRentalLine(getRentalLineForCategory(category))
     setEditDialogOpen(true)
   }
 
@@ -112,6 +116,7 @@ export function CategoryList() {
         body: JSON.stringify({
           name: editName.trim(),
           description: editDescription.trim() || null,
+          rental_line: editRentalLine || null,
         }),
       })
 
@@ -125,6 +130,7 @@ export function CategoryList() {
       setCategoryToEdit(null)
       setEditName('')
       setEditDescription('')
+      setEditRentalLine('')
     } catch (error) {
       console.error('Failed to update category:', error)
       alert(error instanceof Error ? error.message : '更新失败，请重试')
@@ -201,6 +207,7 @@ export function CategoryList() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>品类名称</TableHead>
+                    <TableHead>业务线</TableHead>
                     <TableHead>描述</TableHead>
                     <TableHead>创建时间</TableHead>
                     <TableHead className="text-right">操作</TableHead>
@@ -210,6 +217,9 @@ export function CategoryList() {
                   {categories.map((category) => (
                     <TableRow key={category.id}>
                       <TableCell className="font-medium">{category.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {getRentalLineLabel(getRentalLineForCategory(category))}
+                      </TableCell>
                       <TableCell>{category.description || '-'}</TableCell>
                       <TableCell>{new Date(category.created_at).toLocaleDateString('zh-CN')}</TableCell>
                       <TableCell className="text-right">
@@ -257,6 +267,11 @@ export function CategoryList() {
                 required
               />
             </div>
+            <RentalLineSelect
+              value={editRentalLine}
+              onChange={setEditRentalLine}
+              required
+            />
             <div className="space-y-2">
               <Label htmlFor="edit-description">描述</Label>
               <Textarea
@@ -276,6 +291,7 @@ export function CategoryList() {
                 setCategoryToEdit(null)
                 setEditName('')
                 setEditDescription('')
+                setEditRentalLine('')
               }}
               disabled={updating}
             >

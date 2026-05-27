@@ -3,6 +3,8 @@
 import type { Category } from '@/lib/types/database'
 import { Button } from '@/components/ui/button'
 import { Edit, Trash2 } from 'lucide-react'
+import { getRentalLineForCategory, getRentalLineLabel } from '@/lib/categories/rentalLine'
+import { ItemListMicroBadge } from '@/components/items/ItemListSectionHeaders'
 
 type CategoryListMobileCardProps = {
   category: Category
@@ -13,7 +15,10 @@ type CategoryListMobileCardProps = {
 export function CategoryListMobileCard({ category, onEdit, onDelete }: CategoryListMobileCardProps) {
   return (
     <article className="min-w-0 rounded-xl border border-border/70 bg-card p-4 shadow-sm">
-      <div className="font-semibold">{category.name}</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold">{category.name}</span>
+        <ItemListMicroBadge>{getRentalLineLabel(getRentalLineForCategory(category))}</ItemListMicroBadge>
+      </div>
       <p className="mt-2 min-w-0 break-words text-sm text-muted-foreground">{category.description || '-'}</p>
       <div className="mt-2 text-xs text-muted-foreground">
         创建于 {new Date(category.created_at).toLocaleDateString('zh-CN')}

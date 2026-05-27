@@ -1,14 +1,13 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback, memo } from 'react'
+import { Fragment, useEffect, useState, useMemo, useCallback, memo } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   AlertDialog,
@@ -26,6 +25,19 @@ import Link from 'next/link'
 import { clampPaybackForBar, formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { ItemListMobileCard } from './ItemListMobileCard'
+import { ItemListShortNameEditor } from './ItemListShortNameEditor'
+import {
+  getRentalLineForCategory,
+  getRentalLineLabel,
+  RENTAL_LINE_OPTIONS,
+} from '@/lib/categories/rentalLine'
+import { buildItemListDisplay, type ItemCategoryGroup } from '@/lib/items/itemListGrouping'
+import {
+  ItemListRowContextBadges,
+  ItemListSectionBreadcrumb,
+  ItemListSoldDivider,
+  ItemListStatusHeader,
+} from '@/components/items/ItemListSectionHeaders'
 
 export function ItemList() {
   const searchParams = useSearchParams()
@@ -38,6 +50,7 @@ export function ItemList() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [rentalLineFilter, setRentalLineFilter] = useState<string>('all')
   const [assetsValue, setAssetsValue] = useState<{ totalPurchasePrice: number; assetCount: number } | null>(null)
   const [loadingAssetsValue, setLoadingAssetsValue] = useState(false)
 
@@ -278,89 +291,245 @@ export function ItemList() {
     }
   }, [items])
 
-  // 筛选逻辑
-  const filteredItems = useMemo(() => {
-    const filtered = items.filter(item => {
-      // 品类筛选
-      if (categoryFilter !== 'all' && item.category?.name !== categoryFilter) {
-        return false
-      }
-
-      // 状态筛选
-      if (statusFilter !== 'all' && item.status !== statusFilter) {
-        return false
-      }
-
-      // 搜索筛选：匹配设备名称、品牌、型号
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase()
-        const matchesName = item.name.toLowerCase().includes(query)
-        const matchesBrand = item.brand?.toLowerCase().includes(query) || false
-        const matchesModel = item.model?.toLowerCase().includes(query) || false
-        if (!matchesName && !matchesBrand && !matchesModel) {
+  const applyListFilters = useCallback(
+    (source: ItemWithStats[], opts?: { includeRentalLine?: boolean }) => {
+      return source.filter((item) => {
+        if (opts?.includeRentalLine !== false && rentalLineFilter !== 'all') {
+          const line = getRentalLineForCategory(item.category)
+          if (line !== rentalLineFilter) return false
+        }
+        if (categoryFilter !== 'all' && item.category?.name !== categoryFilter) {
           return false
         }
-      }
-
-      return true
-    })
-
-    // 判断是否处于"未经筛选"状态
-    const isUnfiltered = !searchQuery && statusFilter === 'all' && categoryFilter === 'all'
-
-    if (isUnfiltered) {
-      // 未经筛选：已售出资产排最后，各自按价值排序
-      return filtered.sort((a, b) => {
-        // 先判断是否已售出：已售出的排在后面
-        const aSold = a.status === 'sold'
-        const bSold = b.status === 'sold'
-        
-        if (aSold !== bSold) {
-          return aSold ? 1 : -1 // 已售出的排后面（aSold为true时返回1，排在后面）
+        if (statusFilter !== 'all' && item.status !== statusFilter) {
+          return false
         }
-        
-        // 同一组内（都是已售出或都不是已售出）按价值降序排序
-        const priceA = a.purchase_price || 0
-        const priceB = b.purchase_price || 0
-        return priceB - priceA // 降序：高价值在前
+        if (searchQuery) {
+          const query = searchQuery.toLowerCase()
+        const matchesName = item.name.toLowerCase().includes(query)
+        const matchesShort = item.short_name?.toLowerCase().includes(query) || false
+        const matchesBrand = item.brand?.toLowerCase().includes(query) || false
+        const matchesModel = item.model?.toLowerCase().includes(query) || false
+        if (!matchesName && !matchesShort && !matchesBrand && !matchesModel) {
+            return false
+          }
+        }
+        return true
       })
-    } else {
-      // 有筛选条件：按状态优先级 + 品类 + 购买成本排序
-      const statusPriority: Record<string, number> = {
-        'available': 1,
-        'rented': 2,
-        'in_use': 3,
-        'maintenance': 4,
-        'retired': 5,
-        'sold': 6,
-      }
+    },
+    [rentalLineFilter, categoryFilter, statusFilter, searchQuery]
+  )
 
-      return filtered.sort((a, b) => {
-        // 1. 按状态优先级排序（如果状态筛选不是"全部"）
-        if (statusFilter === 'all') {
-          const statusA = statusPriority[a.status] || 999
-          const statusB = statusPriority[b.status] || 999
-          if (statusA !== statusB) {
-            return statusA - statusB
-          }
-        }
+  const filteredItems = useMemo(
+    () => applyListFilters(items),
+    [items, applyListFilters]
+  )
 
-        // 2. 按品类排序（如果品类筛选不是"全部"）
-        if (categoryFilter === 'all') {
-          const categoryA = a.category?.name || ''
-          const categoryB = b.category?.name || ''
-          if (categoryA !== categoryB) {
-            return categoryA.localeCompare(categoryB, 'zh-CN')
-          }
-        }
+  /** 导航条计数：不受业务线筛选影响，便于切换 */
+  const itemsForNav = useMemo(
+    () => applyListFilters(items, { includeRentalLine: false }),
+    [items, applyListFilters]
+  )
 
-        // 3. 按购买成本降序排序
-        const priceA = a.purchase_price || 0
-        const priceB = b.purchase_price || 0
-        return priceB - priceA
+  const listDisplay = useMemo(
+    () =>
+      buildItemListDisplay(filteredItems, {
+        statusFilter,
+        groupByStatusFirst: rentalLineFilter !== 'all',
+      }),
+    [filteredItems, statusFilter, rentalLineFilter]
+  )
+
+  const useStatusFirstLayout =
+    listDisplay.statusFirstSections != null && listDisplay.statusFirstSections.length > 0
+
+  const showFamilyOnRow =
+    rentalLineFilter === 'all' &&
+    categoryFilter === 'all' &&
+    statusFilter === 'all' &&
+    listDisplay.sections.length > 1
+  const showCategoryOnRow = categoryFilter === 'all'
+  const showStatusOnRow = statusFilter === 'all' && !useStatusFirstLayout
+  const showStatusSectionHeaders = statusFilter === 'all' && useStatusFirstLayout
+  const showSoldSection =
+    listDisplay.soldCount > 0 && (statusFilter === 'all' || statusFilter === 'sold')
+
+  const navDisplay = useMemo(
+    () => buildItemListDisplay(itemsForNav, { statusFilter: 'all' }),
+    [itemsForNav]
+  )
+
+  const breadcrumbSegments = useMemo(() => {
+    const segments: {
+      label: string
+      count: number
+      sectionKey: string
+      muted?: boolean
+    }[] = navDisplay.sections.map((s) => ({
+      label: s.familyLabel,
+      count: s.itemCount,
+      sectionKey: s.family,
+    }))
+    if (navDisplay.soldCount > 0) {
+      segments.push({
+        label: '已售出',
+        count: navDisplay.soldCount,
+        muted: true,
+        sectionKey: 'sold',
       })
     }
-  }, [items, searchQuery, statusFilter, categoryFilter])
+    return segments
+  }, [navDisplay])
+
+  const showBreadcrumb = breadcrumbSegments.length > 1
+
+  const activeBreadcrumbKey =
+    statusFilter === 'sold' ? 'sold' : rentalLineFilter !== 'all' ? rentalLineFilter : null
+
+  const handleShortNameSaved = useCallback((itemId: string, shortName: string | null) => {
+    setItems((prev) =>
+      prev.map((it) => (it.id === itemId ? { ...it, short_name: shortName } : it))
+    )
+  }, [])
+
+  const handleBreadcrumbSelect = useCallback((sectionKey: string) => {
+    if (sectionKey === 'sold') {
+      if (statusFilter === 'sold' && rentalLineFilter === 'all') {
+        setStatusFilter('all')
+      } else {
+        setRentalLineFilter('all')
+        setCategoryFilter('all')
+        setStatusFilter('sold')
+      }
+      return
+    }
+    if (rentalLineFilter === sectionKey && statusFilter !== 'sold') {
+      setRentalLineFilter('all')
+    } else {
+      setRentalLineFilter(sectionKey)
+      setStatusFilter('all')
+    }
+  }, [rentalLineFilter, statusFilter])
+
+  const getRentalLineLabelForItem = (item: ItemWithStats) =>
+    getRentalLineLabel(getRentalLineForCategory(item.category))
+
+  const getItemSubtitle = (item: ItemWithStats) => {
+    const parts = [item.brand, item.model].filter(Boolean).join(' ')
+    if (!parts && !item.serial_number) return undefined
+    return parts + (item.serial_number ? ` · ${item.serial_number}` : '')
+  }
+
+  const renderTableRow = (
+    item: ItemWithStats,
+    opts?: { sold?: boolean; familyLabel?: string }
+  ) => {
+    const paybackPct = item.payback_progress_pct ?? 0
+    const paybackDisplay = `${paybackPct.toFixed(1)}%`
+    const netProfit = item.net_profit || 0
+    const muted = opts?.sold
+    const familyLabel = opts?.familyLabel ?? getRentalLineLabelForItem(item)
+
+    return (
+      <TableRow
+        key={item.id}
+        className={cn(
+          'border-0 border-b border-zinc-100 bg-white hover:bg-zinc-50/50',
+          muted && 'opacity-80'
+        )}
+      >
+        <TableCell className="py-5 pl-4 pr-2">
+          <ItemListRowContextBadges
+            familyLabel={familyLabel}
+            categoryName={item.category?.name || '未分类'}
+            statusLabel={getStatusLabel(item.status)}
+            showFamily={showFamilyOnRow}
+            showCategory={showCategoryOnRow}
+            showStatus={showStatusOnRow}
+            sold={muted}
+          />
+          <div className="flex items-start gap-2.5">
+            {getCategoryIcon(item.category?.name) ? (
+              <span className="mt-0.5 shrink-0 opacity-70">{getCategoryIcon(item.category?.name)}</span>
+            ) : null}
+            <ItemListShortNameEditor
+              itemId={item.id}
+              fullName={item.name}
+              shortName={item.short_name}
+              subtitle={getItemSubtitle(item)}
+              onSaved={(shortName) => handleShortNameSaved(item.id, shortName)}
+              showDetailLink={false}
+            />
+          </div>
+        </TableCell>
+        <TableCell className="py-5 text-right align-top">
+          <div
+            className={cn(
+              'text-lg font-semibold tabular-nums tracking-tight',
+              netProfit > 0 ? 'text-emerald-600' : netProfit < 0 ? 'text-red-600' : 'text-zinc-400'
+            )}
+          >
+            {formatCurrency(netProfit)}
+          </div>
+          <p className="mt-0.5 text-[10px] text-zinc-400">净收益</p>
+        </TableCell>
+        <TableCell className="py-5 align-top">
+          <div className="min-w-0 max-w-[9rem] space-y-1.5">
+            <div className="flex items-center justify-between gap-1 text-sm">
+              <span
+                className={cn(
+                  'font-medium tabular-nums',
+                  paybackPct >= 100
+                    ? 'text-emerald-600'
+                    : paybackPct > 0
+                      ? 'text-foreground'
+                      : 'text-zinc-400'
+                )}
+              >
+                {paybackDisplay}
+              </span>
+              {paybackPct >= 100 ? (
+                <span className="text-[10px] text-emerald-600">已回本</span>
+              ) : null}
+            </div>
+            <Progress
+              value={clampPaybackForBar(paybackPct)}
+              className={cn('h-1', paybackPct >= 100 && '[&>*]:bg-emerald-500')}
+            />
+          </div>
+        </TableCell>
+        <TableCell className="py-5 tabular-nums text-sm text-zinc-500 align-top">
+          {formatCurrency(item.purchase_price)}
+        </TableCell>
+        <TableCell className="py-5 tabular-nums text-sm text-zinc-500 align-top">
+          {formatCurrency(item.total_revenue || 0)}
+        </TableCell>
+        <TableCell className="py-5 align-top">
+          <Badge variant={getStatusBadgeVariant(item.status)} className="font-normal">
+            {getStatusLabel(item.status)}
+          </Badge>
+        </TableCell>
+        <TableCell className="py-5 pr-2 text-right align-top">
+          <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+            <Link href={`/items/${item.id}`}>详情</Link>
+          </Button>
+        </TableCell>
+        <TableCell className="py-5 pr-4 text-right align-top">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => {
+              setItemToDelete(item)
+              setDeleteDialogOpen(true)
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-zinc-400 hover:text-destructive" />
+          </Button>
+        </TableCell>
+      </TableRow>
+    )
+  }
 
   if (loading) {
     return (
@@ -495,84 +664,6 @@ export function ItemList() {
         </div>
       )}
 
-      {/* 筛选区域 */}
-      {items.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">筛选</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
-              {/* 1. 品类筛选 - 最粗粒度，最先选择 */}
-              <div className="space-y-2">
-                <Label htmlFor="category">品类</Label>
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="全部品类" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部品类</SelectItem>
-                    {categories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* 2. 状态筛选 - 中等粒度，进一步筛选 */}
-              <div className="space-y-2">
-                <Label htmlFor="status">状态</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger id="status">
-                    <SelectValue placeholder="全部状态" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部状态</SelectItem>
-                    <SelectItem value="available">可用</SelectItem>
-                    <SelectItem value="rented">出租中</SelectItem>
-                    <SelectItem value="in_use">使用中</SelectItem>
-                    <SelectItem value="maintenance">维护中</SelectItem>
-                    <SelectItem value="retired">已退役</SelectItem>
-                    <SelectItem value="sold">已售出</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* 3. 搜索 - 最细粒度，精确查找 */}
-              <div className="space-y-2">
-                <Label htmlFor="search">搜索</Label>
-                <Input
-                  id="search"
-                  placeholder="搜索设备名称、品牌、型号..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            </div>
-            {(searchQuery || statusFilter !== 'all' || categoryFilter !== 'all') && (
-              <div className="mt-4 flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  共找到 {filteredItems.length} 条记录
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearchQuery('')
-                    setStatusFilter('all')
-                    setCategoryFilter('all')
-                  }}
-                >
-                  清除筛选
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {items.length === 0 ? (
         <Card>
           <CardContent className="py-12">
@@ -592,154 +683,260 @@ export function ItemList() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="min-w-0">
-          <CardHeader className="border-b border-border/50 pb-4">
-            <CardTitle>资产列表</CardTitle>
-            <CardDescription>共 {items.length} 件设备{filteredItems.length !== items.length ? `，筛选后显示 ${filteredItems.length} 件` : ''}</CardDescription>
-          </CardHeader>
-          <CardContent className="min-w-0 px-0 pb-4 pt-0 sm:px-0">
+        <Card className="min-w-0 overflow-hidden border-zinc-200/80 bg-white shadow-sm">
+          <div className="border-b border-zinc-100 px-3 py-3 sm:px-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 shrink-0">
+                <h3 className="text-sm font-semibold tracking-tight text-foreground">资产组合</h3>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  {filteredItems.length} 件
+                  {filteredItems.length !== items.length ? ` / 共 ${items.length} 件` : ''}
+                  · 按净收益与回本排序浏览
+                </p>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:max-w-2xl lg:justify-end">
+                <Input
+                  id="search"
+                  placeholder="搜索名称、品牌、型号…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-8 min-w-0 flex-1 basis-[140px] border-zinc-200 bg-white text-sm shadow-none sm:min-w-[180px]"
+                />
+                <Select value={rentalLineFilter} onValueChange={setRentalLineFilter}>
+                  <SelectTrigger
+                    id="rental_line"
+                    className="h-8 w-full min-w-0 border-zinc-200 bg-white text-xs shadow-none sm:w-[108px]"
+                  >
+                    <SelectValue placeholder="业务线" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部业务线</SelectItem>
+                    {RENTAL_LINE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger
+                    id="category"
+                    className="h-8 w-full min-w-0 border-zinc-200 bg-white text-xs shadow-none sm:w-[120px]"
+                  >
+                    <SelectValue placeholder="品类" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部品类</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger
+                    id="status"
+                    className="h-8 w-full min-w-0 border-zinc-200 bg-white text-xs shadow-none sm:w-[108px]"
+                  >
+                    <SelectValue placeholder="状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部状态</SelectItem>
+                    <SelectItem value="available">可用</SelectItem>
+                    <SelectItem value="rented">出租中</SelectItem>
+                    <SelectItem value="in_use">使用中</SelectItem>
+                    <SelectItem value="maintenance">维护中</SelectItem>
+                    <SelectItem value="retired">已退役</SelectItem>
+                    <SelectItem value="sold">已售出</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(searchQuery || statusFilter !== 'all' || categoryFilter !== 'all') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs text-zinc-500"
+                    onClick={() => {
+                      setSearchQuery('')
+                      setStatusFilter('all')
+                      setCategoryFilter('all')
+                    }}
+                  >
+                    清除
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+          {showBreadcrumb ? (
+            <div className="border-b border-zinc-100">
+              <ItemListSectionBreadcrumb
+                segments={breadcrumbSegments}
+                activeSectionKey={activeBreadcrumbKey}
+                onSelectSection={handleBreadcrumbSelect}
+              />
+            </div>
+          ) : null}
+          <CardContent className="min-w-0 p-0">
             {filteredItems.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">没有找到匹配的资产</div>
             ) : (
               <>
-                <div className="space-y-3 px-3 pb-2 pt-4 sm:px-4 lg:hidden">
-                  {filteredItems.map((item, index) => (
-                    <ItemListMobileCard
-                      key={item.id}
-                      item={item}
-                      index={index}
-                      getCategoryIcon={getCategoryIcon}
-                      getStatusBadgeVariant={getStatusBadgeVariant}
-                      getStatusLabel={getStatusLabel}
-                      onDelete={(it) => {
-                        setItemToDelete(it)
-                        setDeleteDialogOpen(true)
-                      }}
-                    />
-                  ))}
+                <div className="divide-y divide-zinc-100 bg-white lg:hidden">
+                  {(() => {
+                    const renderMobileItems = (
+                      categories: ItemCategoryGroup[],
+                      opts?: { sold?: boolean; familyLabel?: string }
+                    ) =>
+                      categories.flatMap((category) =>
+                        category.statusGroups.flatMap((statusGroup) =>
+                          statusGroup.items.map((item) => (
+                            <ItemListMobileCard
+                              key={item.id}
+                              item={item}
+                              muted={opts?.sold}
+                              familyLabel={opts?.familyLabel ?? getRentalLineLabelForItem(item)}
+                              showFamily={showFamilyOnRow}
+                              showCategory={showCategoryOnRow}
+                              showStatus={showStatusOnRow}
+                              getCategoryIcon={getCategoryIcon}
+                              getStatusBadgeVariant={getStatusBadgeVariant}
+                              getStatusLabel={getStatusLabel}
+                              onDelete={(it) => {
+                                setItemToDelete(it)
+                                setDeleteDialogOpen(true)
+                              }}
+                              onShortNameSaved={handleShortNameSaved}
+                            />
+                          ))
+                        )
+                      )
+
+                    const renderMobileBody = () => {
+                      if (useStatusFirstLayout && listDisplay.statusFirstSections) {
+                        return listDisplay.statusFirstSections.map((statusSection) => (
+                          <div key={statusSection.status} className="border-b border-zinc-100 last:border-0">
+                            {showStatusSectionHeaders ? (
+                              <ItemListStatusHeader
+                                statusLabel={getStatusLabel(statusSection.status)}
+                                count={statusSection.itemCount}
+                              />
+                            ) : null}
+                            {renderMobileItems(statusSection.categories)}
+                          </div>
+                        ))
+                      }
+                      return listDisplay.sections.map((section) => (
+                        <div key={section.family}>
+                          {renderMobileItems(section.categories, {
+                            familyLabel: section.familyLabel,
+                          })}
+                        </div>
+                      ))
+                    }
+
+                    return (
+                      <>
+                        {renderMobileBody()}
+                        {showSoldSection ? (
+                          <div>
+                            <ItemListSoldDivider count={listDisplay.soldCount} />
+                            {renderMobileItems(listDisplay.soldCategories, { sold: true })}
+                          </div>
+                        ) : null}
+                      </>
+                    )
+                  })()}
                 </div>
-                <div className="hidden min-w-0 px-3 pb-3 pt-2 sm:px-4 lg:block">
-                  <Table>
+                <div className="hidden bg-white lg:block">
+                  <Table className="bg-white [&_tr]:border-0">
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[60px]">序号</TableHead>
-                        <TableHead>设备名称</TableHead>
-                        <TableHead>品类</TableHead>
-                        <TableHead>序列号</TableHead>
-                        <TableHead>购买成本</TableHead>
-                        <TableHead>总收入</TableHead>
-                        <TableHead>净收益</TableHead>
-                        <TableHead>回本</TableHead>
-                        <TableHead>状态</TableHead>
-                        <TableHead className="text-right">操作</TableHead>
-                        <TableHead className="text-right">删除</TableHead>
+                      <TableRow className="border-0 border-b border-zinc-100 bg-white hover:bg-white">
+                        <TableHead className="h-9 border-0 bg-white py-2 pl-4 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                          设备
+                        </TableHead>
+                        <TableHead className="h-9 border-0 bg-white py-2 text-right text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                          净收益
+                        </TableHead>
+                        <TableHead className="h-9 border-0 bg-white py-2 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                          回本
+                        </TableHead>
+                        <TableHead className="h-9 border-0 bg-white py-2 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                          成本
+                        </TableHead>
+                        <TableHead className="h-9 border-0 bg-white py-2 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                          收入
+                        </TableHead>
+                        <TableHead className="h-9 border-0 bg-white py-2 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                          状态
+                        </TableHead>
+                        <TableHead className="h-9 border-0 bg-white py-2 text-right text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                          操作
+                        </TableHead>
+                        <TableHead className="h-9 w-10 border-0 bg-white py-2 pr-4" />
                       </TableRow>
                     </TableHeader>
-                    <TableBody>
-                      {filteredItems.map((item, index) => {
-                        const paybackPct = item.payback_progress_pct ?? 0
-                        const paybackDisplay = `${paybackPct.toFixed(1)}%`
+                    <TableBody className="bg-white [&_tr:last-child]:border-b">
+                      {(() => {
+                        const renderTableItems = (
+                          categories: ItemCategoryGroup[],
+                          opts?: { sold?: boolean; familyLabel?: string }
+                        ) =>
+                          categories.flatMap((category) =>
+                            category.statusGroups.flatMap((statusGroup) =>
+                              statusGroup.items.map((item) =>
+                                renderTableRow(item, {
+                                  sold: opts?.sold,
+                                  familyLabel: opts?.familyLabel,
+                                })
+                              )
+                            )
+                          )
+
+                        const renderTableBody = () => {
+                          if (useStatusFirstLayout && listDisplay.statusFirstSections) {
+                            return listDisplay.statusFirstSections.flatMap((statusSection) => [
+                              showStatusSectionHeaders ? (
+                                <TableRow
+                                  key={`status-${statusSection.status}`}
+                                  className="border-0 bg-zinc-50/50 hover:bg-zinc-50/50"
+                                >
+                                  <TableCell colSpan={8} className="py-2">
+                                    <ItemListStatusHeader
+                                      statusLabel={getStatusLabel(statusSection.status)}
+                                      count={statusSection.itemCount}
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              ) : null,
+                              ...renderTableItems(statusSection.categories),
+                            ])
+                          }
+                          return listDisplay.sections.map((section) => (
+                            <Fragment key={section.family}>
+                              {renderTableItems(section.categories, {
+                                familyLabel: section.familyLabel,
+                              })}
+                            </Fragment>
+                          ))
+                        }
 
                         return (
-                          <TableRow key={item.id}>
-                            <TableCell className="text-muted-foreground">{index + 1}</TableCell>
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                {getCategoryIcon(item.category?.name) && (
-                                  <span className="flex-shrink-0">{getCategoryIcon(item.category?.name)}</span>
-                                )}
-                                <div>
-                                  <div>{item.name}</div>
-                                  {item.brand && item.model && (
-                                    <div className="text-sm text-muted-foreground">
-                                      {item.brand} {item.model}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>{item.category?.name || '-'}</TableCell>
-                            <TableCell>
-                              <code className="rounded bg-muted px-2 py-1 text-xs">{item.serial_number || '未设置'}</code>
-                            </TableCell>
-                            <TableCell>{formatCurrency(item.purchase_price)}</TableCell>
-                            <TableCell>{formatCurrency(item.total_revenue || 0)}</TableCell>
-                            <TableCell
-                              className={cn(
-                                'font-medium',
-                                (item.net_profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                              )}
-                            >
-                              {formatCurrency(item.net_profit || 0)}
-                            </TableCell>
-                            <TableCell>
-                              <div className="min-w-0 max-w-[11rem] space-y-2 sm:max-w-[12rem]">
-                                <div className="flex items-start justify-between gap-2 text-sm">
-                                  <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-                                    <span
-                                      className={cn(
-                                        'font-medium tabular-nums',
-                                        paybackPct >= 100
-                                          ? 'text-green-600'
-                                          : paybackPct > 0
-                                            ? 'text-foreground'
-                                            : 'text-muted-foreground'
-                                      )}
-                                    >
-                                      {paybackDisplay}
-                                    </span>
-                                    {paybackPct >= 100 ? (
-                                      <Badge
-                                        variant="secondary"
-                                        className="shrink-0 px-1.5 py-0 text-[10px] font-normal text-green-700"
-                                      >
-                                        已回本
-                                      </Badge>
-                                    ) : null}
-                                  </div>
-                                  <TrendingUp
-                                    className={cn(
-                                      'mt-0.5 h-4 w-4 shrink-0',
-                                      paybackPct >= 100
-                                        ? 'text-green-600'
-                                        : paybackPct > 0
-                                          ? 'text-muted-foreground'
-                                          : 'text-muted-foreground/60'
-                                    )}
-                                  />
-                                </div>
-                                <Progress
-                                  value={clampPaybackForBar(paybackPct)}
-                                  className={cn(
-                                    'h-2',
-                                    paybackPct >= 100 && '[&>*]:bg-green-600'
-                                  )}
-                                />
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={getStatusBadgeVariant(item.status)}>{getStatusLabel(item.status)}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm" asChild>
-                                <Link href={`/items/${item.id}`}>查看</Link>
-                              </Button>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setItemToDelete(item)
-                                  setDeleteDialogOpen(true)
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
+                          <>
+                            {renderTableBody()}
+                            {showSoldSection ? (
+                              <>
+                                <TableRow className="border-0 hover:bg-white">
+                                  <TableCell colSpan={8} className="p-0">
+                                    <ItemListSoldDivider count={listDisplay.soldCount} />
+                                  </TableCell>
+                                </TableRow>
+                                {renderTableItems(listDisplay.soldCategories, { sold: true })}
+                              </>
+                            ) : null}
+                          </>
                         )
-                      })}
+                      })()}
                     </TableBody>
                   </Table>
                 </div>

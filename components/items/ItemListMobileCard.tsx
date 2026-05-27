@@ -6,135 +6,133 @@ import type { ItemWithStats } from '@/lib/types/database'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Trash2, TrendingUp } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { clampPaybackForBar, formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
+import { ItemListRowContextBadges } from '@/components/items/ItemListSectionHeaders'
+import { ItemListShortNameEditor } from '@/components/items/ItemListShortNameEditor'
 
 type ItemListMobileCardProps = {
   item: ItemWithStats
-  index: number
+  muted?: boolean
+  familyLabel?: string
+  showFamily?: boolean
+  showCategory?: boolean
+  showStatus?: boolean
   getCategoryIcon: (categoryName: string | undefined | null) => ReactNode
   getStatusBadgeVariant: (status: string) => 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | null | undefined
   getStatusLabel: (status: string) => string
   onDelete: (item: ItemWithStats) => void
+  onShortNameSaved: (itemId: string, shortName: string | null) => void
 }
 
 export function ItemListMobileCard({
   item,
-  index,
+  muted,
+  familyLabel,
+  showFamily,
+  showCategory,
+  showStatus,
   getCategoryIcon,
   getStatusBadgeVariant,
   getStatusLabel,
   onDelete,
+  onShortNameSaved,
 }: ItemListMobileCardProps) {
   const paybackPct = item.payback_progress_pct ?? 0
   const paybackDisplay = `${paybackPct.toFixed(1)}%`
+  const netProfit = item.net_profit || 0
   const icon = getCategoryIcon(item.category?.name)
 
   return (
-    <article className="min-w-0 rounded-xl border border-border/70 bg-card p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-start gap-2">
-          <span className="mt-0.5 shrink-0 text-xs text-muted-foreground tabular-nums">{index + 1}</span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start gap-2">
-              {icon ? <span className="mt-0.5 shrink-0">{icon}</span> : null}
-              <div className="min-w-0">
-                <div className="font-semibold leading-snug break-words">{item.name}</div>
-                {item.brand && item.model && (
-                  <div className="text-sm text-muted-foreground">
-                    {item.brand} {item.model}
-                  </div>
-                )}
-              </div>
-            </div>
+    <article
+      className={cn(
+        'bg-white px-4 py-4',
+        muted && 'opacity-80'
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <ItemListRowContextBadges
+            familyLabel={familyLabel}
+            categoryName={item.category?.name || '未分类'}
+            statusLabel={getStatusLabel(item.status)}
+            showFamily={showFamily}
+            showCategory={showCategory}
+            showStatus={showStatus}
+            sold={muted}
+          />
+          <div className="flex items-start gap-2">
+            {icon ? <span className="mt-0.5 shrink-0 opacity-70">{icon}</span> : null}
+            <ItemListShortNameEditor
+              itemId={item.id}
+              fullName={item.name}
+              shortName={item.short_name}
+              subtitle={(() => {
+                const parts = [item.brand, item.model].filter(Boolean).join(' ')
+                if (!parts && !item.serial_number) return undefined
+                return parts + (item.serial_number ? ` · ${item.serial_number}` : '')
+              })()}
+              onSaved={(shortName) => onShortNameSaved(item.id, shortName)}
+              showDetailLink={false}
+            />
           </div>
         </div>
-        <Badge variant={getStatusBadgeVariant(item.status)} className="shrink-0">
+        <div className="shrink-0 text-right">
+          <div
+            className={cn(
+              'text-lg font-semibold tabular-nums tracking-tight',
+              netProfit > 0 ? 'text-emerald-600' : netProfit < 0 ? 'text-red-600' : 'text-zinc-400'
+            )}
+          >
+            {formatCurrency(netProfit)}
+          </div>
+          <p className="text-[10px] text-zinc-400">净收益</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-zinc-500">
+        <div>
+          <span className="text-zinc-400">回本 </span>
+          <span
+            className={cn(
+              'font-medium tabular-nums',
+              paybackPct >= 100 ? 'text-emerald-600' : 'text-foreground'
+            )}
+          >
+            {paybackDisplay}
+          </span>
+        </div>
+        <div>
+          <span className="text-zinc-400">成本 </span>
+          <span className="tabular-nums">{formatCurrency(item.purchase_price)}</span>
+        </div>
+        <div>
+          <span className="text-zinc-400">收入 </span>
+          <span className="tabular-nums">{formatCurrency(item.total_revenue || 0)}</span>
+        </div>
+        <Badge variant={getStatusBadgeVariant(item.status)} className="h-5 text-[10px] font-normal">
           {getStatusLabel(item.status)}
         </Badge>
       </div>
 
-      <dl className="mt-3 grid gap-2 border-t border-border/60 pt-3 text-sm">
-        <div className="flex gap-2">
-          <dt className="w-14 shrink-0 text-xs text-muted-foreground">品类</dt>
-          <dd className="min-w-0 break-words">{item.category?.name || '-'}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="w-14 shrink-0 text-xs text-muted-foreground">序列号</dt>
-          <dd className="min-w-0">
-            <code className="break-all rounded bg-muted px-2 py-0.5 text-xs">{item.serial_number || '未设置'}</code>
-          </dd>
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <div>
-            <span className="text-xs text-muted-foreground">成本 </span>
-            <span className="tabular-nums">{formatCurrency(item.purchase_price)}</span>
-          </div>
-          <div>
-            <span className="text-xs text-muted-foreground">总收入 </span>
-            <span className="tabular-nums">{formatCurrency(item.total_revenue || 0)}</span>
-          </div>
-          <div>
-            <span className="text-xs text-muted-foreground">净收益 </span>
-            <span
-              className={cn(
-                'font-medium tabular-nums',
-                (item.net_profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-              )}
-            >
-              {formatCurrency(item.net_profit || 0)}
-            </span>
-          </div>
-        </div>
-      </dl>
+      <Progress
+        value={clampPaybackForBar(paybackPct)}
+        className={cn('mt-2.5 h-1', paybackPct >= 100 && '[&>*]:bg-emerald-500')}
+      />
 
-      <div className="mt-3 border-t border-border/60 pt-3">
-        <div className="flex items-start justify-between gap-2 text-sm">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-            <span
-              className={cn(
-                'font-medium tabular-nums',
-                paybackPct >= 100 ? 'text-green-600' : paybackPct > 0 ? 'text-foreground' : 'text-muted-foreground'
-              )}
-            >
-              {paybackDisplay}
-            </span>
-            {paybackPct >= 100 ? (
-              <Badge
-                variant="secondary"
-                className="shrink-0 px-1.5 py-0 text-[10px] font-normal text-green-700"
-              >
-                已回本
-              </Badge>
-            ) : null}
-            <span className="text-muted-foreground">回本</span>
-          </div>
-          <TrendingUp
-            className={cn(
-              'mt-0.5 h-4 w-4 shrink-0',
-              paybackPct >= 100 ? 'text-green-600' : 'text-muted-foreground'
-            )}
-          />
-        </div>
-        <Progress
-          value={clampPaybackForBar(paybackPct)}
-          className={cn('mt-2 h-2', paybackPct >= 100 && '[&>*]:bg-green-600')}
-        />
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2 border-t border-border/60 pt-3">
-        <Button variant="outline" size="sm" asChild>
-          <Link href={`/items/${item.id}`}>查看</Link>
+      <div className="mt-3 flex gap-2">
+        <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" asChild>
+          <Link href={`/items/${item.id}`}>详情</Link>
         </Button>
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="h-8 w-8 p-0 text-zinc-400 hover:text-destructive"
           onClick={() => onDelete(item)}
           aria-label="删除资产"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
     </article>

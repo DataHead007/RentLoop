@@ -15,6 +15,7 @@ import type {
   Customer,
   ItemAccountBinding,
   BadmintonOrderLine,
+  BadmintonMatchRecord,
   FinancingLoan,
   FinancingLoanPayment,
 } from '../types/database'
@@ -57,7 +58,7 @@ export async function deleteCategory(id: string): Promise<void> {
 
 export async function updateCategory(
   id: string,
-  updates: { name?: string; description?: string | null }
+  updates: { name?: string; description?: string | null; rental_line?: string | null }
 ): Promise<Category> {
   const { data, error } = await supabaseDb
     .from('categories')
@@ -1180,7 +1181,30 @@ export async function getTransactions(
     return getSortDate(b).localeCompare(getSortDate(a))
   })
 
+  if (itemId) {
+    const relatedOrders = await getRelatedOrdersForItem(itemId)
+    const { enrichTransactionsWithOrderIds } = await import('@/lib/transactions/transactionOrderLink')
+    return enrichTransactionsWithOrderIds(sorted, relatedOrders)
+  }
+
   return sorted
+}
+
+async function getRelatedOrdersForItem(itemId: string): Promise<{ id: string; order_number: string | null }[]> {
+  const { data, error } = await supabaseDb
+    .from('order_items')
+    .select('order_id, order:orders(id, order_number)')
+    .eq('item_id', itemId)
+
+  if (error) throw error
+
+  const byId = new Map<string, { id: string; order_number: string | null }>()
+  for (const row of data || []) {
+    const raw = row.order as { id: string; order_number: string | null } | { id: string; order_number: string | null }[] | null
+    const order = Array.isArray(raw) ? raw[0] : raw
+    if (order?.id) byId.set(order.id, { id: order.id, order_number: order.order_number })
+  }
+  return [...byId.values()]
 }
 
 export async function createTransaction(
@@ -1987,4 +2011,72 @@ export async function createFinancingLoan(
     .single()
   if (error) throw error
   return data as FinancingLoan
+}
+
+// 羽毛球个人参赛记录
+export async function getBadmintonMatchRecords(): Promise<BadmintonMatchRecord[]> {
+  const { data, error } = await supabaseDb
+    .from('badminton_match_records')
+    .select('*')
+    .order('event_date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data || []) as BadmintonMatchRecord[]
+}
+
+export async function getBadmintonMatchRecordById(id: string): Promise<BadmintonMatchRecord | null> {
+  const { data, error } = await supabaseDb
+    .from('badminton_match_records')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) throw error
+  return (data as BadmintonMatchRecord | null) ?? null
+}
+
+export async function createBadmintonMatchRecord(
+  row: Omit<BadmintonMatchRecord, 'id' | 'created_at' | 'updated_at'>
+): Promise<BadmintonMatchRecord> {
+  const { data, error } = await supabaseDb
+    .from('badminton_match_records')
+    .insert(row)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as BadmintonMatchRecord
+}
+
+export async function updateBadmintonMatchRecord(
+  id: string,
+  row: Omit<BadmintonMatchRecord, 'id' | 'created_at' | 'updated_at'>
+): Promise<BadmintonMatchRecord> {
+  const { data, error } = await supabaseDb
+    .from('badminton_match_records')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as BadmintonMatchRecord
+}
+
+export async function deleteBadmintonMatchRecord(id: string): Promise<void> {
+  const { error } = await supabaseDb.from('badminton_match_records').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getTransactionsForBadmintonMatch(matchId: string): Promise<Transaction[]> {
+  const { data, error } = await supabaseDb
+    .from('transactions')
+    .select('*')
+    .eq('badminton_match_record_id', matchId)
+    .order('transaction_date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data || []) as Transaction[]
 }

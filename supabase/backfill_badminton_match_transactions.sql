@@ -1,0 +1,11 @@
+-- 可选：为已存在、尚未关联交易的比赛记录补同步
+-- 在应用已部署 sync 逻辑后，也可在界面逐条「编辑 → 保存」触发同步。
+-- 本脚本仅作参考；推荐通过应用 API 保存以保持一致逻辑。
+
+-- 示例：列出尚无 auto_created 关联交易的比赛
+-- SELECT m.id, m.event_name, m.event_date
+-- FROM badminton_match_records m
+-- WHERE NOT EXISTS (
+--   SELECT 1 FROM transactions t
+--   WHERE t.badminton_match_record_id = m.id AND t.auto_created = true
+-- );

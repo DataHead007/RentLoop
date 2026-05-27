@@ -8,7 +8,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  calendarPopoverContentClass,
+} from '@/components/ui/popover'
 import { CalendarIcon, Loader2 } from 'lucide-react'
 import { formatDateShort, formatCurrency } from '@/lib/utils/format'
 import { calculateRentalAmount } from '@/lib/utils/availability'
@@ -185,7 +190,11 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent
+                  className={calendarPopoverContentClass}
+                  align="start"
+                  collisionPadding={16}
+                >
                   <Calendar
                     mode="single"
                     selected={formData.start_date}
@@ -216,7 +225,11 @@ export function OrderForm({ itemId, onSuccess }: OrderFormProps) {
                     )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent
+                  className={calendarPopoverContentClass}
+                  align="end"
+                  collisionPadding={16}
+                >
                   <Calendar
                     mode="single"
                     selected={formData.end_date}

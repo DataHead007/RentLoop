@@ -39,7 +39,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="container mx-auto min-w-0 w-full max-w-2xl px-3 py-4 sm:px-4 md:px-6 md:py-8">
+    <div className="container mx-auto min-w-0 w-full max-w-2xl px-3 pt-3 pb-4 sm:px-4 md:px-6 md:pt-4 md:pb-6">
       <div className="mb-6 flex items-center gap-2">
         <Settings className="h-6 w-6 shrink-0 text-muted-foreground sm:h-6 sm:w-6" />
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">设置</h1>

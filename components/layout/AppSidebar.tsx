@@ -20,6 +20,7 @@ import {
   Settings,
   Sparkles,
   Tag,
+  Trophy,
   Users,
   X,
 } from 'lucide-react'
@@ -80,6 +81,7 @@ const RENTAL_SUB_NAV = [
 ] as const
 
 const BADMINTON_SUB_NAV = [
+  { name: '我的比赛', href: '/badminton/matches', icon: Trophy },
   { name: '羽毛球订单', href: '/badminton/orders', icon: Calendar },
   { name: '羽毛球交易', href: '/badminton/transactions', icon: ArrowRightLeft },
 ] as const

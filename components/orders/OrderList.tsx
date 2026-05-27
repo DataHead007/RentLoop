@@ -515,7 +515,8 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
   }
 
   return (
-    <div className="min-w-0 space-y-4 sm:space-y-6">
+    <div className="min-w-0 space-y-3 sm:space-y-4">
+      <div className="rounded-lg border border-border/60 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
@@ -578,9 +579,8 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
         </div>
       </div>
 
-      {/* 时间范围筛选 */}
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
-        <span className="shrink-0 text-sm text-muted-foreground">时间范围：</span>
+      <div className="mt-3 flex min-w-0 flex-col gap-2 border-t border-border/50 pt-3 sm:flex-row sm:items-center sm:gap-2">
+        <span className="shrink-0 text-sm text-muted-foreground">时间范围</span>
         <div className="flex max-w-full overflow-x-auto rounded-lg border bg-muted/50 p-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap">
           {(['all', 'week', 'month', 'last_month', 'next_month', 'year'] as const).map((preset) => (
             <button
@@ -606,6 +606,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
             </button>
           ))}
         </div>
+      </div>
       </div>
 
       {/* 统计卡片区域 */}

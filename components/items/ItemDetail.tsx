@@ -10,6 +10,7 @@ import { ArrowLeft, Package, DollarSign, Calendar as CalendarIcon, Hash, Edit, F
 import type { FinancingLoan, ItemWithStats, Transaction } from '@/lib/types/database'
 import { clampPaybackForBar, formatCurrency, formatDateShort, formatOwnershipDuration } from '@/lib/utils/format'
 import { getPostSaleLiquidationAlert, isItemLiquidated } from '@/lib/finance/liquidationAlerts'
+import { cn } from '@/lib/utils'
 import { AlmStackedBar } from '@/components/items/AlmStackedBar'
 import Link from 'next/link'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -36,6 +37,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { format } from 'date-fns'
+import { TransactionDescriptionLink } from '@/components/transactions/TransactionDescriptionLink'
+import {
+  getOrderDetailHref,
+  getTransactionOrderId,
+  getTransactionOrderLabel,
+} from '@/lib/transactions/transactionOrderLink'
 
 export function ItemDetail() {
   const params = useParams()
@@ -269,8 +276,13 @@ export function ItemDetail() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{item.name}</h2>
+            {item.short_name?.trim() ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                简称：<span className="font-medium text-foreground">{item.short_name.trim()}</span>
+              </p>
+            ) : null}
             {item.brand && item.model && (
               <p className="text-sm text-muted-foreground sm:text-base">{item.brand} {item.model}</p>
             )}
@@ -624,60 +636,92 @@ export function ItemDetail() {
             ) : (
               <>
                 <div className="space-y-3 lg:hidden">
-                  {transactions.map((transaction) => (
-                    <div
-                      key={transaction.id}
-                      className="rounded-lg border border-border/60 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm text-muted-foreground">
-                            {formatDateShort(transaction.transaction_date)}
-                          </p>
-                          <p className="mt-1 text-lg font-semibold tabular-nums">
-                            {formatCurrency(transaction.amount)}
-                          </p>
-                        </div>
-                        {transaction.order_id ? (
-                          <Link
-                            href={`/orders/${transaction.order_id}`}
-                            className="shrink-0 text-xs text-primary hover:underline"
-                          >
-                            关联订单
-                          </Link>
-                        ) : (
-                          <Badge variant="outline" className="shrink-0 text-xs">
-                            手动创建
-                          </Badge>
+                  {transactions.map((transaction) => {
+                    const orderId = getTransactionOrderId(transaction)
+                    return (
+                      <div
+                        key={transaction.id}
+                        role={orderId ? 'button' : undefined}
+                        tabIndex={orderId ? 0 : undefined}
+                        className={cn(
+                          'rounded-lg border border-border/60 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-4',
+                          orderId && 'cursor-pointer transition-colors hover:bg-muted/30'
                         )}
-                      </div>
-                      <p className="mt-2 text-sm">
-                        <span className="text-muted-foreground">类别：</span>
-                        {transaction.category || '—'}
-                      </p>
-                      {transaction.description ? (
-                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                          {transaction.description}
+                        onClick={
+                          orderId
+                            ? () => router.push(getOrderDetailHref(orderId))
+                            : undefined
+                        }
+                        onKeyDown={
+                          orderId
+                            ? (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  router.push(getOrderDetailHref(orderId))
+                                }
+                              }
+                            : undefined
+                        }
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm text-muted-foreground">
+                              {formatDateShort(transaction.transaction_date)}
+                            </p>
+                            <p className="mt-1 text-lg font-semibold tabular-nums">
+                              {formatCurrency(transaction.amount)}
+                            </p>
+                          </div>
+                          {orderId ? (
+                            <Badge variant="secondary" className="shrink-0 text-xs">
+                              订单关联
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="shrink-0 text-xs">
+                              手动记录
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm">
+                          <span className="text-muted-foreground">类别：</span>
+                          {transaction.category || '—'}
                         </p>
-                      ) : null}
-                      <div className="mt-3 flex gap-2">
-                        <Button variant="outline" size="sm" className="flex-1" asChild>
-                          <Link href={`/transactions/${transaction.id}/edit`}>编辑</Link>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-destructive"
-                          onClick={() => {
-                            setTransactionToDelete(transaction)
-                            setDeleteDialogOpen(true)
-                          }}
+                        <div
+                          className="mt-1 text-sm"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          删除
-                        </Button>
+                          <TransactionDescriptionLink transaction={transaction} />
+                        </div>
+                        <div
+                          className="mt-3 flex flex-wrap gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {orderId ? (
+                            <Button variant="default" size="sm" className="flex-1" asChild>
+                              <Link href={getOrderDetailHref(orderId)}>
+                                <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                                订单详情
+                              </Link>
+                            </Button>
+                          ) : null}
+                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                            <Link href={`/transactions/${transaction.id}/edit`}>编辑</Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => {
+                              setTransactionToDelete(transaction)
+                              setDeleteDialogOpen(true)
+                            }}
+                          >
+                            删除
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 <div className="hidden min-w-0 lg:block">
               <Table>
@@ -692,49 +736,74 @@ export function ItemDetail() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {transactions.map((transaction) => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>{formatDateShort(transaction.transaction_date)}</TableCell>
-                      <TableCell className="font-medium">
-                        {formatCurrency(transaction.amount)}
-                      </TableCell>
-                      <TableCell>{transaction.category || '-'}</TableCell>
-                      <TableCell>{transaction.description || '-'}</TableCell>
-                      <TableCell>
-                        {transaction.order_id ? (
-                          <Link
-                            href={`/orders/${transaction.order_id}`}
-                            className="text-sm text-primary hover:underline"
-                          >
-                            订单 {transaction.order_id.slice(0, 8)}...
-                          </Link>
-                        ) : (
-                          <Badge variant="outline" className="text-xs">
-                            手动创建
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link href={`/transactions/${transaction.id}/edit`}>
-                              <Edit className="h-4 w-4" />
+                  {transactions.map((transaction) => {
+                    const orderId = getTransactionOrderId(transaction)
+                    const orderLabel = getTransactionOrderLabel(transaction)
+                    return (
+                      <TableRow
+                        key={transaction.id}
+                        className={cn(orderId && 'cursor-pointer hover:bg-muted/40')}
+                        onClick={
+                          orderId
+                            ? () => router.push(getOrderDetailHref(orderId))
+                            : undefined
+                        }
+                      >
+                        <TableCell>{formatDateShort(transaction.transaction_date)}</TableCell>
+                        <TableCell className="font-medium tabular-nums">
+                          {formatCurrency(transaction.amount)}
+                        </TableCell>
+                        <TableCell>{transaction.category || '-'}</TableCell>
+                        <TableCell
+                          className="max-w-md"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <TransactionDescriptionLink transaction={transaction} />
+                        </TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {orderId ? (
+                            <Link
+                              href={getOrderDetailHref(orderId)}
+                              className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              {orderLabel || '查看订单'}
                             </Link>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setTransactionToDelete(transaction)
-                              setDeleteDialogOpen(true)
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          ) : (
+                            <Badge variant="outline" className="text-xs">
+                              手动记录
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-2">
+                            {orderId ? (
+                              <Button variant="ghost" size="sm" asChild>
+                                <Link href={getOrderDetailHref(orderId)} title="订单详情">
+                                  <ExternalLink className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                            ) : null}
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link href={`/transactions/${transaction.id}/edit`}>
+                                <Edit className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setTransactionToDelete(transaction)
+                                setDeleteDialogOpen(true)
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
                 </div>
