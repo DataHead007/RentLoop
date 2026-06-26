@@ -140,10 +140,10 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
   }
 
   // 对订单进行排序：
-  // 1) 待发货（pending/confirmed）最优先
+  // 1) 待发货（pending/confirmed）最优先，组内按开始租/服务日升序（越早越靠上）
   // 2) 进行中（in_progress）其次：按租赁到期日（end_date）升序，越早到期越靠前，便于催还
   // 3) 已完成/已取消最后
-  // 待发货组内按创建时间倒序；已完成组内按更新时间倒序
+  // 待发货同日开始租时按创建时间升序；已完成组内按更新时间倒序
   const sortedOrders = useMemo(() => {
     const waitingShipmentOrders = orders.filter(
       (o) => o.status === 'pending' || o.status === 'confirmed'
@@ -159,10 +159,32 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
       return timeB - timeA
     }
 
+    const sortByCreatedAtAsc = (a: Order, b: Order) => {
+      const timeA = new Date(a.created_at).getTime()
+      const timeB = new Date(b.created_at).getTime()
+      return timeA - timeB
+    }
+
     const sortByUpdatedAtDesc = (a: Order, b: Order) => {
       const timeA = new Date(a.updated_at).getTime()
       const timeB = new Date(b.updated_at).getTime()
       return timeB - timeA
+    }
+
+    /** 待发货：租赁用 start_date；羽毛球用 service_date；无日期排最后 */
+    const sortWaitingShipmentByStartDateAsc = (a: Order, b: Order) => {
+      const startKey = (o: Order) => {
+        const raw =
+          o.order_type === 'badminton'
+            ? (o.service_date ?? o.start_date ?? '')
+            : (o.start_date ?? '')
+        const day = String(raw).split('T')[0]
+        const t = new Date(day).getTime()
+        return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY
+      }
+      const diff = startKey(a) - startKey(b)
+      if (diff !== 0) return diff
+      return sortByCreatedAtAsc(a, b)
     }
 
     /** 待收货：租赁用 end_date；羽毛球用 service_date；无日期排最后 */
@@ -181,7 +203,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
       return sortByCreatedAtDesc(a, b)
     }
 
-    waitingShipmentOrders.sort(sortByCreatedAtDesc)
+    waitingShipmentOrders.sort(sortWaitingShipmentByStartDateAsc)
     inProgressOrders.sort(sortInProgressByReturnDateAsc)
     completedOrders.sort(sortByUpdatedAtDesc)
 

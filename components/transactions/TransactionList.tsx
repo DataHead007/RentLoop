@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
@@ -17,7 +17,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { TrendingUp, TrendingDown, Plus, Trash2, Edit, Sparkles, Filter, Package, AlertCircle } from 'lucide-react'
+import {
+  TrendingUp,
+  TrendingDown,
+  Plus,
+  Trash2,
+  Edit,
+  Sparkles,
+  Filter,
+  Package,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
 import type { Transaction } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort } from '@/lib/utils/format'
@@ -31,6 +43,18 @@ import {
   SCOPE_ORDER,
   scopeToQueryParams,
 } from '@/lib/transactions/scopeFilter'
+import {
+  appendPeriodToSearchParams,
+  formatMonthLabel,
+  formatMonthProgressHint,
+  getCurrentMonthStart,
+  getMonthRange,
+  getPreviousMonthStart,
+  periodLabel,
+  shiftMonth,
+  type TransactionPeriodMode,
+} from '@/lib/transactions/periodFilter'
+import { addMonths, subMonths } from 'date-fns'
 
 /** 「全部」模式下对照卡片用的细分 scope（不含 all / creator 合计） */
 const BREAKDOWN_SCOPES: TransactionScopeFilter[] = [
@@ -62,13 +86,27 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null)
   const [deleting, setDeleting] = useState(false)
   
-  // 统计范围状态（同时控制统计和交易列表）；默认全部，与各业务线汇总一起看
+  // 统计范围状态（同时控制统计和交易列表）
   const [statsScope, setStatsScope] = useState<TransactionScopeFilter>(initialScope)
-  /** 仅在「全部」时加载：各板块/渠道小计（便于对照，点击可钻取） */
+  /** 时间范围：默认本月 */
+  const [periodMode, setPeriodMode] = useState<TransactionPeriodMode>('month')
+  const [viewMonth, setViewMonth] = useState(() => getCurrentMonthStart())
+  const [prevMonthNetProfit, setPrevMonthNetProfit] = useState<number | null>(null)
+  /** 仅在「全部」时加载：各板块/渠道小计（与主统计同一次请求） */
   const [lineBreakdown, setLineBreakdown] = useState<
-    Partial<Record<TransactionScopeFilter, { income: number; expense: number; net: number }>>
+    Partial<
+      Record<
+        TransactionScopeFilter,
+        {
+          operatingIncome: number
+          operatingExpense: number
+          net: number
+          cashIncome: number
+          cashExpense: number
+        }
+      >
+    >
   >({})
-  const [lineBreakdownLoading, setLineBreakdownLoading] = useState(false)
   const [categories, setCategories] = useState<string[]>([])
   
   // 资产估值状态
@@ -94,8 +132,31 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
     const code = err instanceof ApiFetchError ? err.code : undefined
     toast.error(message, code ? { description: code } : undefined)
   }
+
+  const buildQueryParams = useCallback(
+    (scope: TransactionScopeFilter) => {
+      const params = scopeToQueryParams(scope)
+      return appendPeriodToSearchParams(params, periodMode, viewMonth)
+    },
+    [periodMode, viewMonth]
+  )
+
+  const activePeriodLabel = useMemo(
+    () => periodLabel(periodMode, viewMonth),
+    [periodMode, viewMonth]
+  )
+
+  const monthProgressHint = useMemo(
+    () => (periodMode === 'month' ? formatMonthProgressHint(viewMonth) : null),
+    [periodMode, viewMonth]
+  )
+
+  const netProfitMomDelta = useMemo(() => {
+    if (periodMode !== 'month' || prevMonthNetProfit === null) return null
+    return stats.netProfit - prevMonthNetProfit
+  }, [periodMode, prevMonthNetProfit, stats.netProfit])
   
-  // 主数据加载 useEffect（当统计范围变化时）
+  // 主数据加载 useEffect（统计范围或时间范围变化时）
   useEffect(() => {
     setLoadError(null)
     const controller = new AbortController()
@@ -103,62 +164,23 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
     Promise.all([
       loadTransactions(controller.signal),
       loadStats(controller.signal),
-      loadAssetsValue()
+      loadPrevMonthStats(controller.signal),
+      loadAssetsValue(),
     ]).catch((error) => {
-      // AbortError is expected when filter changes rapidly, don't log it
       if (error.name !== 'AbortError') {
         console.error('Failed to load transaction data:', error)
       }
     })
 
     return () => controller.abort()
-  }, [statsScope])
-
-  useEffect(() => {
-    if (statsScope !== 'all') {
-      setLineBreakdown({})
-      setLineBreakdownLoading(false)
-      return
-    }
-    const ac = new AbortController()
-    setLineBreakdownLoading(true)
-    Promise.all(
-      BREAKDOWN_SCOPES.map((scope) =>
-        apiFetch<{
-          totalIncome?: number
-          totalExpense?: number
-          netProfit?: number
-        }>(`/api/transactions/stats?${scopeToQueryParams(scope).toString()}`, { signal: ac.signal })
-      )
-    )
-      .then((rows) => {
-        const next: Partial<
-          Record<TransactionScopeFilter, { income: number; expense: number; net: number }>
-        > = {}
-        BREAKDOWN_SCOPES.forEach((scope, i) => {
-          const d = rows[i]
-          next[scope] = {
-            income: Number(d?.totalIncome) || 0,
-            expense: Number(d?.totalExpense) || 0,
-            net: Number(d?.netProfit) || 0,
-          }
-        })
-        setLineBreakdown(next)
-      })
-      .catch((e) => {
-        if (e instanceof Error && e.name === 'AbortError') return
-        console.error('line breakdown stats failed', e)
-      })
-      .finally(() => setLineBreakdownLoading(false))
-
-    return () => ac.abort()
-  }, [statsScope])
+  }, [statsScope, periodMode, viewMonth])
 
   // 监听订单更新事件，自动刷新交易列表和统计数据
   useEffect(() => {
     const handleOrderUpdated = () => {
       loadTransactions()
       loadStats()
+      loadPrevMonthStats()
     }
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'orderUpdated') handleOrderUpdated()
@@ -169,7 +191,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
       window.removeEventListener('orderUpdated', handleOrderUpdated)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [statsScope])
+  }, [statsScope, periodMode, viewMonth])
   
   // 加载资产估值数据
   useEffect(() => {
@@ -184,7 +206,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
   async function loadTransactions(signal?: AbortSignal) {
     try {
       setLoading(true)
-      const params = scopeToQueryParams(statsScope)
+      const params = buildQueryParams(statsScope)
       const response = await fetch(`/api/transactions?${params.toString()}`, { signal })
       if (!response.ok) {
         const errorData = (await response.json().catch(() => ({}))) as {
@@ -232,10 +254,29 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
   async function loadStats(signal?: AbortSignal) {
     try {
       setStatsLoading(true)
-      const params = scopeToQueryParams(statsScope)
-      const data = await apiFetch<any>(`/api/transactions/stats?${params.toString()}`, { signal })
-      
-      // 验证数据格式
+      const params = buildQueryParams(statsScope)
+      if (statsScope === 'all') {
+        params.set('includeScopeBreakdown', 'true')
+      }
+      const data = await apiFetch<{
+        totalIncome?: number
+        totalExpense?: number
+        netProfit?: number
+        transactionCount?: number
+        scopeBreakdown?: Partial<
+          Record<
+            TransactionScopeFilter,
+            {
+              operatingIncome: number
+              operatingExpense: number
+              net: number
+              cashIncome: number
+              cashExpense: number
+            }
+          >
+        >
+      }>(`/api/transactions/stats?${params.toString()}`, { signal })
+
       if (data && typeof data === 'object') {
         setStats({
           totalIncome: Number(data.totalIncome) || 0,
@@ -243,6 +284,11 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
           netProfit: Number(data.netProfit) || 0,
           transactionCount: Number(data.transactionCount) || 0,
         })
+        if (statsScope === 'all' && data.scopeBreakdown) {
+          setLineBreakdown(data.scopeBreakdown)
+        } else {
+          setLineBreakdown({})
+        }
       } else {
         console.error('Invalid stats data format:', data)
         setStats({
@@ -251,25 +297,52 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
           netProfit: 0,
           transactionCount: 0,
         })
+        setLineBreakdown({})
       }
     } catch (error) {
-      // Handle AbortError gracefully - don't treat as error or reset data
       if (error instanceof Error && error.name === 'AbortError') {
-        return // Request was cancelled, do nothing
+        return
       }
-      const msg = error instanceof Error ? error.message : 'Failed to load stats'
+      const msg =
+        error instanceof ApiFetchError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Failed to load stats'
       setLoadError(msg)
       console.error('Failed to load stats:', error)
       toastError(error, '统计加载失败，请重试')
-      // 错误时重置为默认值
       setStats({
         totalIncome: 0,
         totalExpense: 0,
         netProfit: 0,
         transactionCount: 0,
       })
+      setLineBreakdown({})
     } finally {
       setStatsLoading(false)
+    }
+  }
+
+  async function loadPrevMonthStats(signal?: AbortSignal) {
+    if (periodMode !== 'month') {
+      setPrevMonthNetProfit(null)
+      return
+    }
+    try {
+      const prev = getPreviousMonthStart(viewMonth)
+      const { startDate, endDate } = getMonthRange(prev)
+      const params = scopeToQueryParams(statsScope)
+      params.set('startDate', startDate)
+      params.set('endDate', endDate)
+      const data = await apiFetch<{ netProfit?: number }>(
+        `/api/transactions/stats?${params.toString()}`,
+        { signal }
+      )
+      setPrevMonthNetProfit(Number(data?.netProfit) || 0)
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return
+      setPrevMonthNetProfit(null)
     }
   }
 
@@ -379,6 +452,27 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
     return type === 'income' ? '收入' : '支出'
   }
 
+  function goToMonth(month: Date) {
+    setPeriodMode('month')
+    setViewMonth(month)
+  }
+
+  function goToPreviousMonth() {
+    setPeriodMode('month')
+    setViewMonth((m) => shiftMonth(m, -1))
+  }
+
+  function goToNextMonth() {
+    setPeriodMode('month')
+    setViewMonth((m) => shiftMonth(m, 1))
+  }
+
+  const periodChipClass = (active: boolean) =>
+    cn(
+      'min-h-10 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+      active ? 'bg-background shadow' : 'text-muted-foreground hover:text-foreground'
+    )
+
   if (loading && transactions.length === 0) {
     return (
       <Card>
@@ -425,6 +519,83 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
         </div>
       )}
 
+      {/* 时间范围 */}
+      <div className="space-y-2">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center justify-center gap-1 sm:justify-start">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              disabled={periodMode === 'all'}
+              onClick={goToPreviousMonth}
+              aria-label="上一月"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="min-w-[8.5rem] text-center text-sm font-semibold sm:text-base">
+              {activePeriodLabel}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              disabled={periodMode === 'all'}
+              onClick={goToNextMonth}
+              aria-label="下一月"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex flex-wrap justify-center gap-0.5 rounded-lg border bg-muted/50 p-0.5 sm:justify-start">
+            <button
+              type="button"
+              className={periodChipClass(
+                periodMode === 'month' &&
+                  viewMonth.getTime() === subMonths(getCurrentMonthStart(), 1).getTime()
+              )}
+              onClick={() => goToMonth(subMonths(getCurrentMonthStart(), 1))}
+            >
+              上月
+            </button>
+            <button
+              type="button"
+              className={periodChipClass(
+                periodMode === 'month' && viewMonth.getTime() === getCurrentMonthStart().getTime()
+              )}
+              onClick={() => goToMonth(getCurrentMonthStart())}
+            >
+              本月
+            </button>
+            <button
+              type="button"
+              className={periodChipClass(
+                periodMode === 'month' &&
+                  viewMonth.getTime() === addMonths(getCurrentMonthStart(), 1).getTime()
+              )}
+              onClick={() => goToMonth(addMonths(getCurrentMonthStart(), 1))}
+            >
+              下月
+            </button>
+            <button
+              type="button"
+              className={periodChipClass(periodMode === 'all')}
+              onClick={() => setPeriodMode('all')}
+            >
+              全部
+            </button>
+          </div>
+        </div>
+        {monthProgressHint ? (
+          <p className="text-xs text-muted-foreground">{monthProgressHint}</p>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          下方统计与交易列表按所选时间范围筛选；资产残值为当前快照，不随月份变化。
+        </p>
+      </div>
+
       {/* 统计切换 */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -448,20 +619,26 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
           </div>
         </div>
         <p className="text-xs text-muted-foreground pl-0 sm:pl-[4.5rem]">
-          三大板块：租赁、羽毛球、自媒体（下含 YouTube / 微信视频号 / 小红书）。点选后下方列表与统计仅含该范围。
+          三大板块：租赁、羽毛球、自媒体（下含 YouTube / 微信视频号 / 小红书）。与上方时间范围组合筛选。
         </p>
       </div>
 
       {statsScope === 'all' && (
-        <Card className={cn(lineBreakdownLoading && 'opacity-70')}>
+        <Card className={cn(statsLoading && 'opacity-70')}>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">各板块/渠道对照</CardTitle>
-            <CardDescription>点击某一卡片可钻取该范围交易明细与统计</CardDescription>
+            <CardDescription>
+              {activePeriodLabel} · 大数为经营净利；下方为经营收/支（与净利同口径）
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
               {BREAKDOWN_SCOPES.map((scope) => {
                 const row = lineBreakdown[scope]
+                const hasCashDelta =
+                  row &&
+                  (Math.abs(row.cashIncome - row.operatingIncome) > 0.005 ||
+                    Math.abs(row.cashExpense - row.operatingExpense) > 0.005)
                 return (
                   <button
                     key={scope}
@@ -476,11 +653,17 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
                         (row?.net ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'
                       )}
                     >
-                      {row ? formatCurrency(row.net) : lineBreakdownLoading ? '…' : formatCurrency(0)}
+                      {row ? formatCurrency(row.net) : statsLoading ? '…' : formatCurrency(0)}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-                      收 {row ? formatCurrency(row.income) : '—'} / 支 {row ? formatCurrency(row.expense) : '—'}
+                      经营收 {row ? formatCurrency(row.operatingIncome) : '—'} / 经营支{' '}
+                      {row ? formatCurrency(row.operatingExpense) : '—'}
                     </div>
+                    {hasCashDelta && row ? (
+                      <div className="mt-0.5 text-[11px] text-muted-foreground/80 tabular-nums">
+                        现金流收 {formatCurrency(row.cashIncome)} / 支 {formatCurrency(row.cashExpense)}
+                      </div>
+                    ) : null}
                   </button>
                 )
               })}
@@ -503,6 +686,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
             )}>
               {formatCurrency(stats.totalIncome)}
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">{activePeriodLabel}</p>
           </CardContent>
         </Card>
         
@@ -518,6 +702,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
             )}>
               {formatCurrency(stats.totalExpense)}
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">{activePeriodLabel}</p>
           </CardContent>
         </Card>
         
@@ -534,7 +719,20 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
             )}>
               {formatCurrency(stats.netProfit)}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">经营口径（已排除融资放款入账、归还借款本金）</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {activePeriodLabel} · 经营口径（已排除融资放款入账、归还借款本金）
+            </p>
+            {netProfitMomDelta !== null ? (
+              <p
+                className={cn(
+                  'mt-1 text-xs font-medium tabular-nums',
+                  netProfitMomDelta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                )}
+              >
+                较上月 {netProfitMomDelta >= 0 ? '+' : ''}
+                {formatCurrency(netProfitMomDelta)}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
         
@@ -550,6 +748,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
             )}>
               {stats.transactionCount}
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">{activePeriodLabel}</p>
           </CardContent>
         </Card>
         
@@ -570,7 +769,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
                 </div>
                 {assetsValue.assetCount > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    {assetsValue.assetCount} 项资产
+                    {assetsValue.assetCount} 项资产 · 当前时点
                   </p>
                 )}
               </div>
@@ -603,20 +802,22 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
                     {formatCurrency(estimatedResidualValue)}
                   </span>
                 </div>
-                <div className="flex items-baseline gap-2 pt-1 border-t">
-                  <span className="text-xs text-muted-foreground">预期总收益：</span>
-                  <div className="flex flex-col gap-0.5">
-                    <span className={cn(
-                      "text-lg font-semibold tabular-nums",
-                      expectedTotalProfit >= 0 ? "text-green-600" : "text-red-600"
-                    )}>
-                      {formatCurrency(expectedTotalProfit)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      (净利润 + 残值)
-                    </span>
+                {periodMode === 'all' ? (
+                  <div className="flex items-baseline gap-2 pt-1 border-t">
+                    <span className="text-xs text-muted-foreground">预期总收益：</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className={cn(
+                        "text-lg font-semibold tabular-nums",
+                        expectedTotalProfit >= 0 ? "text-green-600" : "text-red-600"
+                      )}>
+                        {formatCurrency(expectedTotalProfit)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        (净利润 + 残值)
+                      </span>
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -631,9 +832,13 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
             <div className="text-center space-y-4">
               <TrendingUp className="h-12 w-12 mx-auto text-muted-foreground" />
               <div>
-                <h3 className="text-lg font-semibold">暂无交易记录</h3>
+                <h3 className="text-lg font-semibold">
+                  {periodMode === 'month' ? `${formatMonthLabel(viewMonth)}暂无交易` : '暂无交易记录'}
+                </h3>
                 <p className="text-muted-foreground">
-                  开始添加你的第一笔交易记录吧
+                  {periodMode === 'month'
+                    ? '可切换月份或点「全部」查看历史累计'
+                    : '开始添加你的第一笔交易记录吧'}
                 </p>
               </div>
             </div>
@@ -643,7 +848,9 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
         <Card className="min-w-0">
           <CardHeader>
             <CardTitle>交易列表</CardTitle>
-            <CardDescription>共 {transactions.length} 笔交易</CardDescription>
+            <CardDescription>
+              共 {transactions.length} 笔 · {activePeriodLabel}
+            </CardDescription>
           </CardHeader>
           <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
             <div className="space-y-3 lg:hidden">
