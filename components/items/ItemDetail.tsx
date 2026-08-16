@@ -14,17 +14,6 @@ import { cn } from '@/lib/utils'
 import { AlmStackedBar } from '@/components/items/AlmStackedBar'
 import Link from 'next/link'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,8 +25,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { format } from 'date-fns'
 import { TransactionDescriptionLink } from '@/components/transactions/TransactionDescriptionLink'
+import { AddMaintenanceDialog } from '@/components/items/AddMaintenanceDialog'
 import {
   getOrderDetailHref,
   getTransactionOrderId,
@@ -55,12 +44,6 @@ export function ItemDetail() {
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false)
-  const [maintenanceForm, setMaintenanceForm] = useState({
-    amount: '',
-    description: '',
-    transaction_date: format(new Date(), 'yyyy-MM-dd'),
-  })
-  const [submittingMaintenance, setSubmittingMaintenance] = useState(false)
   const [activeFinancingLoan, setActiveFinancingLoan] = useState<FinancingLoan | null>(null)
 
   const liquidationAlert = useMemo(() => {
@@ -145,60 +128,6 @@ export function ItemDetail() {
       alert(error instanceof Error ? error.message : '删除失败，请重试')
     } finally {
       setDeleting(false)
-    }
-  }
-
-  async function handleSubmitMaintenance(e: React.FormEvent) {
-    e.preventDefault()
-    
-    if (!maintenanceForm.amount || parseFloat(maintenanceForm.amount) <= 0) {
-      alert('请输入有效的维护费用金额')
-      return
-    }
-
-    setSubmittingMaintenance(true)
-    try {
-      // 金额转为负数（支出）
-      const amount = -Math.abs(parseFloat(maintenanceForm.amount))
-      
-      const response = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          item_id: itemId,
-          order_id: null,
-          type: 'expense',
-          amount: amount,
-          category: '维护费用',
-          description: maintenanceForm.description || '设备维护',
-          transaction_date: maintenanceForm.transaction_date,
-          auto_created: false,
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || '创建维护记录失败')
-      }
-
-      // 刷新数据
-      await loadTransactions()
-      await loadItem()
-      
-      // 重置表单并关闭对话框
-      setMaintenanceForm({
-        amount: '',
-        description: '',
-        transaction_date: format(new Date(), 'yyyy-MM-dd'),
-      })
-      setMaintenanceDialogOpen(false)
-      
-      alert('维护记录已添加')
-    } catch (error) {
-      console.error('Failed to create maintenance record:', error)
-      alert(error instanceof Error ? error.message : '添加维护记录失败，请重试')
-    } finally {
-      setSubmittingMaintenance(false)
     }
   }
 
@@ -845,68 +774,16 @@ export function ItemDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* 添加维护记录对话框 */}
-      <Dialog open={maintenanceDialogOpen} onOpenChange={setMaintenanceDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>添加维护记录</DialogTitle>
-            <DialogDescription>
-              记录设备的维护费用，将自动创建一条支出交易记录
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmitMaintenance} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="maintenance-amount">维护费用 (¥) *</Label>
-              <Input
-                id="maintenance-amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={maintenanceForm.amount}
-                onChange={(e) => setMaintenanceForm({ ...maintenanceForm, amount: e.target.value })}
-                placeholder="100.00"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maintenance-description">维护说明</Label>
-              <Textarea
-                id="maintenance-description"
-                value={maintenanceForm.description}
-                onChange={(e) => setMaintenanceForm({ ...maintenanceForm, description: e.target.value })}
-                placeholder="例如：镜头贴膜、清洁保养等"
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="maintenance-date">维护日期 *</Label>
-              <Input
-                id="maintenance-date"
-                type="date"
-                value={maintenanceForm.transaction_date}
-                onChange={(e) => setMaintenanceForm({ ...maintenanceForm, transaction_date: e.target.value })}
-                required
-              />
-            </div>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setMaintenanceDialogOpen(false)}
-                disabled={submittingMaintenance}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={submittingMaintenance}>
-                {submittingMaintenance ? '添加中...' : '确定添加'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <AddMaintenanceDialog
+        open={maintenanceDialogOpen}
+        onOpenChange={setMaintenanceDialogOpen}
+        itemId={itemId}
+        itemName={item?.short_name || item?.name}
+        onSuccess={async () => {
+          await loadTransactions()
+          await loadItem()
+        }}
+      />
     </div>
   )
 }

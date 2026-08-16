@@ -7,15 +7,10 @@ import {
   withinRentalLineSortKey,
   type RentalLine,
 } from '@/lib/categories/rentalLine'
+import { ITEM_LIST_DISPLAY_STATUS_ORDER_ACTIVE } from '@/lib/items/itemDisplayStatus'
 
-/** 列表内状态分组顺序：出租中优先，便于一眼看到在租资产 */
-export const ITEM_STATUS_ORDER_ACTIVE = [
-  'rented',
-  'available',
-  'in_use',
-  'maintenance',
-  'retired',
-] as const
+/** 列表内状态分组顺序：出租中 → 已预订 → 可用 */
+export const ITEM_STATUS_ORDER_ACTIVE = ITEM_LIST_DISPLAY_STATUS_ORDER_ACTIVE
 
 export const ITEM_STATUS_ORDER = [...ITEM_STATUS_ORDER_ACTIVE, 'sold'] as const
 
@@ -104,14 +99,18 @@ export function compareItemsWithinStatus(a: ItemWithStats, b: ItemWithStats): nu
 }
 
 /** 默认全览：业务线 → 状态 → 净收益 → 品类 */
-export function compareItemsForList(a: ItemWithStats, b: ItemWithStats): number {
+export function compareItemsForList(
+  a: ItemWithStats,
+  b: ItemWithStats,
+  getListStatusKey: (item: ItemWithStats) => string = (item) => item.status
+): number {
   const lineA = getLineForItem(a)
   const lineB = getLineForItem(b)
   const lineDiff = RENTAL_LINE_ORDER.indexOf(lineA) - RENTAL_LINE_ORDER.indexOf(lineB)
   if (lineDiff !== 0) return lineDiff
 
-  const statusA = STATUS_PRIORITY[a.status] ?? 999
-  const statusB = STATUS_PRIORITY[b.status] ?? 999
+  const statusA = STATUS_PRIORITY[getListStatusKey(a)] ?? 999
+  const statusB = STATUS_PRIORITY[getListStatusKey(b)] ?? 999
   if (statusA !== statusB) return statusA - statusB
 
   const within = compareItemsWithinStatus(a, b)
@@ -129,15 +128,17 @@ function sortStatusGroups(category: ItemCategoryGroup) {
 function groupByCategory(
   items: ItemWithStats[],
   includeStatuses: readonly string[],
-  sortFn: (a: ItemWithStats, b: ItemWithStats) => number
+  sortFn: (a: ItemWithStats, b: ItemWithStats) => number,
+  getListStatusKey: (item: ItemWithStats) => string = (item) => item.status
 ): ItemCategoryGroup[] {
   const allowed = new Set(includeStatuses)
-  const sorted = [...items].filter((i) => allowed.has(i.status)).sort(sortFn)
+  const sorted = [...items].filter((i) => allowed.has(getListStatusKey(i))).sort(sortFn)
 
   const result: ItemCategoryGroup[] = []
 
   for (const item of sorted) {
     const categoryName = item.category?.name || UNCATEGORIZED
+    const listStatusKey = getListStatusKey(item)
     let category = result.find((c) => c.categoryName === categoryName)
     if (!category) {
       category = {
@@ -149,9 +150,9 @@ function groupByCategory(
       result.push(category)
     }
 
-    let statusGroup = category.statusGroups.find((g) => g.status === item.status)
+    let statusGroup = category.statusGroups.find((g) => g.status === listStatusKey)
     if (!statusGroup) {
-      statusGroup = { status: item.status, items: [] }
+      statusGroup = { status: listStatusKey, items: [] }
       category.statusGroups.push(statusGroup)
     }
 
@@ -166,14 +167,22 @@ function groupByCategory(
   return result
 }
 
-function buildStatusFirstSections(activeItems: ItemWithStats[]): ItemListStatusSection[] {
+function buildStatusFirstSections(
+  activeItems: ItemWithStats[],
+  getListStatusKey: (item: ItemWithStats) => string = (item) => item.status
+): ItemListStatusSection[] {
   const sections: ItemListStatusSection[] = []
 
   for (const status of ITEM_STATUS_ORDER_ACTIVE) {
-    const statusItems = activeItems.filter((i) => i.status === status)
+    const statusItems = activeItems.filter((i) => getListStatusKey(i) === status)
     if (statusItems.length === 0) continue
 
-    const categories = groupByCategory(statusItems, [status], compareItemsWithinStatus)
+    const categories = groupByCategory(
+      statusItems,
+      [status],
+      compareItemsWithinStatus,
+      getListStatusKey
+    )
     sections.push({
       status,
       categories,
@@ -203,37 +212,68 @@ function bucketIntoLineSections(categories: ItemCategoryGroup[]): ItemListFamily
 
 export function buildItemListDisplay(
   items: ItemWithStats[],
-  options?: { statusFilter?: string; groupByStatusFirst?: boolean }
+  options?: {
+    statusFilter?: string
+    groupByStatusFirst?: boolean
+    getListStatusKey?: (item: ItemWithStats) => string
+  }
 ): ItemListDisplay {
   const statusFilter = options?.statusFilter ?? 'all'
   const groupByStatusFirst = options?.groupByStatusFirst ?? false
+  const getListStatusKey = options?.getListStatusKey ?? ((item) => item.status)
+  const compareForList = (a: ItemWithStats, b: ItemWithStats) =>
+    compareItemsForList(a, b, getListStatusKey)
 
   if (statusFilter === 'sold') {
-    const soldCategories = groupByCategory(items, ['sold'], compareItemsWithinStatus)
+    const soldCategories = groupByCategory(
+      items,
+      ['sold'],
+      compareItemsWithinStatus,
+      getListStatusKey
+    )
     const soldCount = soldCategories.reduce((s, c) => s + c.itemCount, 0)
     return { sections: [], statusFirstSections: null, soldCategories, soldCount }
   }
 
   const activeItems =
-    statusFilter === 'all' ? items.filter((i) => i.status !== 'sold') : items.filter((i) => i.status === statusFilter)
+    statusFilter === 'all'
+      ? items.filter((i) => getListStatusKey(i) !== 'sold')
+      : items.filter((i) => getListStatusKey(i) === statusFilter)
 
   const activeStatuses =
     statusFilter === 'all' ? ITEM_STATUS_ORDER_ACTIVE : ([statusFilter] as readonly string[])
 
   if (groupByStatusFirst && activeItems.length > 0) {
-    const statusFirstSections = buildStatusFirstSections(activeItems)
+    const statusFirstSections = buildStatusFirstSections(activeItems, getListStatusKey)
     const soldCategories =
-      statusFilter === 'all' ? groupByCategory(items.filter((i) => i.status === 'sold'), ['sold'], compareItemsWithinStatus) : []
+      statusFilter === 'all'
+        ? groupByCategory(
+            items.filter((i) => getListStatusKey(i) === 'sold'),
+            ['sold'],
+            compareItemsWithinStatus,
+            getListStatusKey
+          )
+        : []
     const soldCount = soldCategories.reduce((sum, c) => sum + c.itemCount, 0)
     return { sections: [], statusFirstSections, soldCategories, soldCount }
   }
 
-  const activeCategories = groupByCategory(activeItems, activeStatuses, compareItemsForList)
+  const activeCategories = groupByCategory(
+    activeItems,
+    activeStatuses,
+    compareForList,
+    getListStatusKey
+  )
   const sections = bucketIntoLineSections(activeCategories)
 
   const soldCategories =
     statusFilter === 'all'
-      ? groupByCategory(items.filter((i) => i.status === 'sold'), ['sold'], compareItemsWithinStatus)
+      ? groupByCategory(
+          items.filter((i) => getListStatusKey(i) === 'sold'),
+          ['sold'],
+          compareItemsWithinStatus,
+          getListStatusKey
+        )
       : []
 
   const soldCount = soldCategories.reduce((sum, c) => sum + c.itemCount, 0)

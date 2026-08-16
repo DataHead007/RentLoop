@@ -3,40 +3,47 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import type { ItemWithStats } from '@/lib/types/database'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Wrench } from 'lucide-react'
 import { clampPaybackForBar, formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { ItemListRowContextBadges } from '@/components/items/ItemListSectionHeaders'
 import { ItemListShortNameEditor } from '@/components/items/ItemListShortNameEditor'
+import { ItemStatusWithSchedule } from '@/components/items/ItemStatusWithSchedule'
+import type { ItemRentalScheduleEntry } from '@/lib/items/itemRentalSchedule'
 
 type ItemListMobileCardProps = {
   item: ItemWithStats
+  displayStatusKey: string
   muted?: boolean
   familyLabel?: string
   showFamily?: boolean
   showCategory?: boolean
   showStatus?: boolean
+  statusSchedules?: ItemRentalScheduleEntry[]
   getCategoryIcon: (categoryName: string | undefined | null) => ReactNode
   getStatusBadgeVariant: (status: string) => 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | null | undefined
   getStatusLabel: (status: string) => string
   onDelete: (item: ItemWithStats) => void
+  onAddMaintenance: (item: ItemWithStats) => void
   onShortNameSaved: (itemId: string, shortName: string | null) => void
 }
 
 export function ItemListMobileCard({
   item,
+  displayStatusKey,
   muted,
   familyLabel,
   showFamily,
   showCategory,
   showStatus,
+  statusSchedules,
   getCategoryIcon,
   getStatusBadgeVariant,
   getStatusLabel,
   onDelete,
+  onAddMaintenance,
   onShortNameSaved,
 }: ItemListMobileCardProps) {
   const paybackPct = item.payback_progress_pct ?? 0
@@ -56,7 +63,8 @@ export function ItemListMobileCard({
           <ItemListRowContextBadges
             familyLabel={familyLabel}
             categoryName={item.category?.name || '未分类'}
-            statusLabel={getStatusLabel(item.status)}
+            statusLabel={getStatusLabel(displayStatusKey)}
+            statusSchedules={statusSchedules}
             showFamily={showFamily}
             showCategory={showCategory}
             showStatus={showStatus}
@@ -111,9 +119,12 @@ export function ItemListMobileCard({
           <span className="text-zinc-400">收入 </span>
           <span className="tabular-nums">{formatCurrency(item.total_revenue || 0)}</span>
         </div>
-        <Badge variant={getStatusBadgeVariant(item.status)} className="h-5 text-[10px] font-normal">
-          {getStatusLabel(item.status)}
-        </Badge>
+        <ItemStatusWithSchedule
+          label={getStatusLabel(displayStatusKey)}
+          variant={getStatusBadgeVariant(displayStatusKey)}
+          schedules={statusSchedules}
+          className="h-5 text-[10px]"
+        />
       </div>
 
       <Progress
@@ -122,6 +133,15 @@ export function ItemListMobileCard({
       />
 
       <div className="mt-3 flex gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-xs"
+          onClick={() => onAddMaintenance(item)}
+        >
+          <Wrench className="mr-1 h-3.5 w-3.5" />
+          维护
+        </Button>
         <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" asChild>
           <Link href={`/items/${item.id}`}>详情</Link>
         </Button>

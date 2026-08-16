@@ -18,7 +18,13 @@ import type {
   BadmintonMatchRecord,
   FinancingLoan,
   FinancingLoanPayment,
+  OrderCompensation,
 } from '../types/database'
+import type { ItemRentalScheduleEntry } from '@/lib/items/itemRentalSchedule'
+import { sortItemRentalSchedules } from '@/lib/items/itemRentalSchedule'
+import { buildCompensationTransactionDescription } from '@/lib/orders/orderCompensation'
+import type { OrderCompensationLineInput } from '@/lib/orders/orderCompensation'
+import { formatDateToLocalString } from '@/lib/utils/format'
 import type { BusinessPlate, CreatorChannel } from '../types/businessPlate'
 import { normalizeTransactionPlateInput } from '@/lib/finance/transactionPlate'
 
@@ -665,7 +671,12 @@ export async function getOrder(id: string): Promise<Order | null> {
       ),
       third_party_rentals:third_party_rentals(*),
       shipping_fees:shipping_fees(*),
-      badminton_order_lines:badminton_order_lines(*)
+      badminton_order_lines:badminton_order_lines(*),
+      order_compensations:order_compensations(
+        *,
+        item:items(*, category:categories(*)),
+        order_item:order_items(*, item:items!item_id(*))
+      )
     `)
     .eq('id', id)
     .maybeSingle()
@@ -1914,6 +1925,115 @@ export async function deleteThirdPartyRental(id: string): Promise<void> {
 }
 
 // ============================================
+// 订单赔偿
+// ============================================
+
+export async function replaceOrderCompensations(
+  orderId: string,
+  lines: OrderCompensationLineInput[],
+  transactionDate: string
+): Promise<OrderCompensation[]> {
+  const order = await getOrder(orderId)
+  if (!order) throw new Error('Order not found')
+
+  const validOrderItemIds = new Set((order.order_items ?? []).map((oi) => oi.id))
+  const orderItemById = new Map((order.order_items ?? []).map((oi) => [oi.id, oi]))
+
+  const normalizedLines = lines
+    .filter((l) => l.amount > 0 && validOrderItemIds.has(l.order_item_id))
+    .map((l) => {
+      const oi = orderItemById.get(l.order_item_id)
+      return {
+        ...l,
+        item_id: l.item_id ?? oi?.item_id ?? null,
+        amount: Math.round(l.amount * 100) / 100,
+      }
+    })
+
+  const { data: existing, error: fetchError } = await supabaseDb
+    .from('order_compensations')
+    .select('id, transaction_id')
+    .eq('order_id', orderId)
+
+  if (fetchError) throw fetchError
+
+  const txIds = (existing ?? [])
+    .map((row: { transaction_id: string | null }) => row.transaction_id)
+    .filter((id): id is string => Boolean(id))
+
+  if (txIds.length > 0) {
+    const { error: deleteTxError } = await supabaseDb.from('transactions').delete().in('id', txIds)
+    if (deleteTxError) throw deleteTxError
+  }
+
+  const { error: deleteCompError } = await supabaseDb
+    .from('order_compensations')
+    .delete()
+    .eq('order_id', orderId)
+
+  if (deleteCompError) throw deleteCompError
+
+  const created: OrderCompensation[] = []
+  const txDate = transactionDate.split('T')[0]
+
+  for (const line of normalizedLines) {
+    const oi = orderItemById.get(line.order_item_id)
+    let resolvedItemName = oi?.item?.name ?? null
+    if (!resolvedItemName && line.item_id) {
+      const { data: itemRow } = await supabaseDb
+        .from('items')
+        .select('name')
+        .eq('id', line.item_id)
+        .maybeSingle()
+      resolvedItemName = itemRow?.name ?? null
+    }
+
+    const signedAmount =
+      line.direction === 'expense' ? -Math.abs(line.amount) : Math.abs(line.amount)
+
+    const tx = await createTransaction({
+      order_id: orderId,
+      item_id: line.item_id,
+      type: line.direction,
+      amount: signedAmount,
+      category: line.category,
+      description: buildCompensationTransactionDescription(
+        order.order_number,
+        orderId,
+        resolvedItemName,
+        line.reason
+      ),
+      transaction_date: txDate,
+      auto_created: false,
+      business_plate: 'rental',
+      creator_channel: null,
+    })
+
+    const { data: compRow, error: insertError } = await supabaseDb
+      .from('order_compensations')
+      .insert({
+        order_id: orderId,
+        order_item_id: line.order_item_id,
+        item_id: line.item_id,
+        direction: line.direction,
+        category: line.category,
+        amount: line.amount,
+        reason: line.reason,
+        allocation_method: line.allocation_method,
+        transaction_id: tx.id,
+        transaction_date: txDate,
+      })
+      .select('*')
+      .single()
+
+    if (insertError) throw insertError
+    created.push(compRow as OrderCompensation)
+  }
+
+  return created
+}
+
+// ============================================
 // 物流费用查询
 // ============================================
 
@@ -2067,6 +2187,105 @@ export async function updateBadmintonMatchRecord(
 export async function deleteBadmintonMatchRecord(id: string): Promise<void> {
   const { error } = await supabaseDb.from('badminton_match_records').delete().eq('id', id)
   if (error) throw error
+}
+
+/** 各资产当前及未来租赁档期（待发货 + 租期中，按结束日未过期） */
+export async function getItemRentalSchedules(
+  itemIds?: string[]
+): Promise<Record<string, ItemRentalScheduleEntry[]>> {
+  const today = formatDateToLocalString(new Date())
+
+  let query = supabaseDb
+    .from('order_items')
+    .select(
+      `
+      item_id,
+      device_id,
+      subtotal,
+      net_amount,
+      quantity,
+      order:orders!inner(id, order_number, start_date, end_date, status, order_type)
+    `
+    )
+    .in('order.status', ['pending', 'confirmed', 'in_progress'])
+
+  if (itemIds && itemIds.length > 0) {
+    query = query.in('item_id', itemIds)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  const byItem: Record<string, ItemRentalScheduleEntry[]> = {}
+  const seenByItem = new Map<string, Set<string>>()
+
+  const addEntry = (itemId: string, entry: ItemRentalScheduleEntry) => {
+    if (!seenByItem.has(itemId)) seenByItem.set(itemId, new Set())
+    const seen = seenByItem.get(itemId)!
+    const key = `${entry.order_id}|${entry.start_date}|${entry.end_date}`
+    if (seen.has(key)) return
+    seen.add(key)
+    if (!byItem[itemId]) byItem[itemId] = []
+    byItem[itemId].push(entry)
+  }
+
+  for (const row of data || []) {
+    const rawOrder = row.order as
+      | {
+          id: string
+          order_number: string | null
+          start_date: string
+          end_date: string
+          status: string
+          order_type: string
+        }
+      | {
+          id: string
+          order_number: string | null
+          start_date: string
+          end_date: string
+          status: string
+          order_type: string
+        }[]
+      | null
+
+    const order = Array.isArray(rawOrder) ? rawOrder[0] : rawOrder
+    if (!order || order.order_type !== 'rental') continue
+    if (!['pending', 'confirmed', 'in_progress'].includes(order.status)) continue
+
+    const endDay = String(order.end_date).split('T')[0]
+    // 待发货过期不展示；租期中（含逾期未还）仍展示
+    if (order.status !== 'in_progress' && endDay < today) continue
+
+    const unit =
+      row.net_amount != null && Number(row.net_amount) > 0
+        ? Number(row.net_amount)
+        : Number(row.subtotal) || 0
+    const qty = Number(row.quantity) || 1
+    const lineAmount = Math.round(unit * qty * 100) / 100
+
+    const entry: ItemRentalScheduleEntry = {
+      order_id: order.id,
+      order_number: order.order_number,
+      start_date: String(order.start_date).split('T')[0],
+      end_date: endDay,
+      status: order.status as ItemRentalScheduleEntry['status'],
+      amount: lineAmount > 0 ? lineAmount : null,
+    }
+
+    const linkedItemIds = [row.item_id, row.device_id].filter(
+      (id): id is string => typeof id === 'string' && id.trim() !== ''
+    )
+    for (const linkedId of linkedItemIds) {
+      addEntry(linkedId, entry)
+    }
+  }
+
+  for (const id of Object.keys(byItem)) {
+    byItem[id] = sortItemRentalSchedules(byItem[id])
+  }
+
+  return byItem
 }
 
 export async function getTransactionsForBadmintonMatch(matchId: string): Promise<Transaction[]> {

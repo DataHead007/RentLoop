@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp } from 'lucide-react'
+import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp, Scale, Wrench } from 'lucide-react'
 import type { Order } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd, getDateRangeForPreset } from '@/lib/utils/format'
@@ -27,6 +27,13 @@ import { getSiliconflowApiKey } from '@/lib/settings/storageKeys'
 import { ShippingDialog } from './ShippingDialog'
 import { OrderListMobileCard } from './OrderListMobileCard'
 import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
+import type { RentalCompensationStats } from '@/lib/orders/rentalCompensationStats'
+import {
+  getDatePresetLabel,
+  buildRentalCompensationDetailHref,
+  RENTAL_COMPENSATION_INCOME_CATEGORY,
+  RENTAL_MAINTENANCE_EXPENSE_CATEGORY,
+} from '@/lib/orders/rentalCompensationStats'
 
 type ShipSuggestion = {
   recommendShipBy: string
@@ -88,6 +95,35 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
   } = useSWR<Order[]>(ordersKey, (key) => apiFetch<Order[]>(key), {
     keepPreviousData: true,
   })
+
+  const showCompensationStats = effectiveOrderTypeTab !== 'badminton'
+
+  const compensationStatsKey = useMemo(() => {
+    if (!showCompensationStats) return null
+    const params = new URLSearchParams()
+    if (datePreset !== 'all') {
+      const range = getDateRangeForPreset(datePreset)
+      params.set('startDate', range.startDate)
+      params.set('endDate', range.endDate)
+    }
+    const qs = params.toString()
+    return `/api/transactions/rental-compensation-stats${qs ? `?${qs}` : ''}`
+  }, [showCompensationStats, datePreset])
+
+  const { data: compensationStats, mutate: mutateCompensationStats } = useSWR<RentalCompensationStats>(
+    compensationStatsKey,
+    (key) => apiFetch<RentalCompensationStats>(key),
+    { keepPreviousData: true }
+  )
+
+  const compensationPeriodLabel = getDatePresetLabel(datePreset)
+
+  const compStats: RentalCompensationStats = compensationStats ?? {
+    compensationIncome: 0,
+    maintenanceExpense: 0,
+    incomeCount: 0,
+    expenseCount: 0,
+  }
 
   // 根据品类返回对应的图标
   const getCategoryIcon = (categoryName: string | undefined | null) => {
@@ -289,17 +325,24 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
   useEffect(() => {
     const handleOrderUpdated = async () => {
       await mutateOrders()
+      await mutateCompensationStats()
+    }
+    const handleTransactionUpdated = async () => {
+      await mutateCompensationStats()
     }
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'orderUpdated') handleOrderUpdated()
+      if (e.key === 'transactionUpdated') handleTransactionUpdated()
     }
     window.addEventListener('orderUpdated', handleOrderUpdated)
+    window.addEventListener('transactionUpdated', handleTransactionUpdated)
     window.addEventListener('storage', handleStorageChange)
     return () => {
       window.removeEventListener('orderUpdated', handleOrderUpdated)
+      window.removeEventListener('transactionUpdated', handleTransactionUpdated)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [mutateOrders])
+  }, [mutateOrders, mutateCompensationStats])
 
   const toastError = useCallback((err: unknown, fallback: string) => {
     const message = err instanceof ApiFetchError ? err.message : err instanceof Error ? err.message : fallback
@@ -633,7 +676,8 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
 
       {/* 统计卡片区域 */}
       {orders.length > 0 && (
-        <div className={`grid gap-3 sm:gap-4 md:grid-cols-2 ${stats.returnedDeposit > 0 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
+        <div className="space-y-3 sm:space-y-4">
+          <div className={`grid gap-3 sm:gap-4 md:grid-cols-2 ${stats.returnedDeposit > 0 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">订单总金额</CardTitle>
@@ -714,21 +758,6 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">利润（收入－成本）</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className={cn('text-2xl font-semibold tabular-nums', stats.profit >= 0 ? 'text-green-600' : 'text-red-600')}>
-                {formatCurrency(stats.profit)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                收入 {formatCurrency(stats.totalIncome)} － 成本（物流+第三方转租，不含可退押金）{formatCurrency(stats.totalCost)}
-              </p>
-            </CardContent>
-          </Card>
-
           {stats.cancelledAmount > 0 && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -743,6 +772,82 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               </CardContent>
             </Card>
           )}
+          </div>
+
+          {showCompensationStats && (
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+              <Link
+                href={buildRentalCompensationDetailHref(
+                  RENTAL_COMPENSATION_INCOME_CATEGORY,
+                  datePreset
+                )}
+                className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Card className="h-full transition-colors hover:bg-zinc-50/80 hover:border-zinc-300">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">赔偿收入</CardTitle>
+                    <Scale className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-semibold tabular-nums text-emerald-600">
+                      {formatCurrency(compStats.compensationIncome)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {compStats.incomeCount} 笔 · 按记账日期 · {compensationPeriodLabel}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      点击查看明细 · 含订单赔偿及租赁交易（赔偿收入）
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Link
+                href={buildRentalCompensationDetailHref(
+                  RENTAL_MAINTENANCE_EXPENSE_CATEGORY,
+                  datePreset
+                )}
+                className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Card className="h-full transition-colors hover:bg-zinc-50/80 hover:border-zinc-300">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">维修支出</CardTitle>
+                    <Wrench className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-semibold tabular-nums text-red-600">
+                      {formatCurrency(compStats.maintenanceExpense)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {compStats.expenseCount} 笔 · 按记账日期 · {compensationPeriodLabel}
+                    </p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      点击查看明细 · 含订单赔偿与资产维护（维护费用）
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
+          )}
+
+          <Card className="max-w-md">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">利润（租金收入－成本）</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className={cn('text-2xl font-semibold tabular-nums', stats.profit >= 0 ? 'text-green-600' : 'text-red-600')}>
+                {formatCurrency(stats.profit)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                租金 {formatCurrency(stats.totalIncome)} － 成本（物流+第三方转租，不含可退押金）{' '}
+                {formatCurrency(stats.totalCost)}
+              </p>
+              {showCompensationStats ? (
+                <p className="mt-1 text-[10px] text-muted-foreground">不含赔偿与维修，见上排两项独立统计</p>
+              ) : null}
+            </CardContent>
+          </Card>
         </div>
       )}
 

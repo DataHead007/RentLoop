@@ -2,6 +2,8 @@
 
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { ItemStatusWithSchedule } from '@/components/items/ItemStatusWithSchedule'
+import type { ItemRentalScheduleEntry } from '@/lib/items/itemRentalSchedule'
 
 /** 行内 / 面包屑用微型标签 */
 export function ItemListMicroBadge({
@@ -94,6 +96,7 @@ type ItemListRowContextBadgesProps = {
   familyLabel?: string
   categoryName?: string
   statusLabel?: string
+  statusSchedules?: ItemRentalScheduleEntry[]
   showFamily?: boolean
   showCategory?: boolean
   showStatus?: boolean
@@ -104,6 +107,7 @@ export function ItemListRowContextBadges({
   familyLabel,
   categoryName,
   statusLabel,
+  statusSchedules,
   showFamily,
   showCategory,
   showStatus,
@@ -126,7 +130,15 @@ export function ItemListRowContextBadges({
         <ItemListMicroBadge variant={variant}>{categoryName}</ItemListMicroBadge>
       ) : null}
       {showStatus && statusLabel ? (
-        <ItemListMicroBadge variant={sold ? 'sold' : 'muted'}>{statusLabel}</ItemListMicroBadge>
+        sold ? (
+          <ItemListMicroBadge variant="sold">{statusLabel}</ItemListMicroBadge>
+        ) : (
+          <ItemStatusWithSchedule
+            label={statusLabel}
+            schedules={statusSchedules}
+            micro
+          />
+        )
       ) : null}
     </div>
   )

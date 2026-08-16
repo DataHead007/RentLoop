@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +30,7 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react'
 import type { Transaction } from '@/lib/types/database'
 import Link from 'next/link'
@@ -50,8 +52,10 @@ import {
   getCurrentMonthStart,
   getMonthRange,
   getPreviousMonthStart,
+  parseMonthParam,
   periodLabel,
   shiftMonth,
+  type MonthRange,
   type TransactionPeriodMode,
 } from '@/lib/transactions/periodFilter'
 import { addMonths, subMonths } from 'date-fns'
@@ -73,6 +77,9 @@ interface TransactionStats {
 }
 
 export function TransactionList({ initialScope = 'all' }: { initialScope?: TransactionScopeFilter }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [stats, setStats] = useState<TransactionStats>({
     totalIncome: 0,
@@ -88,9 +95,25 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
   
   // 统计范围状态（同时控制统计和交易列表）
   const [statsScope, setStatsScope] = useState<TransactionScopeFilter>(initialScope)
-  /** 时间范围：默认本月 */
-  const [periodMode, setPeriodMode] = useState<TransactionPeriodMode>('month')
-  const [viewMonth, setViewMonth] = useState(() => getCurrentMonthStart())
+  /** 时间范围：默认本月；深链可带 period=all|month|range */
+  const [periodMode, setPeriodMode] = useState<TransactionPeriodMode>(() => {
+    const period = searchParams?.get('period')
+    if (period === 'all') return 'all'
+    if (period === 'range') return 'range'
+    if (period === 'month') return 'month'
+    if (searchParams?.get('startDate') && searchParams?.get('endDate')) return 'range'
+    return 'month'
+  })
+  const [viewMonth, setViewMonth] = useState(() => {
+    return parseMonthParam(searchParams?.get('month')) ?? getCurrentMonthStart()
+  })
+  const [customRange, setCustomRange] = useState<MonthRange | null>(() => {
+    const startDate = searchParams?.get('startDate')
+    const endDate = searchParams?.get('endDate')
+    if (startDate && endDate) return { startDate, endDate }
+    return null
+  })
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams?.get('category')?.trim() || '')
   const [prevMonthNetProfit, setPrevMonthNetProfit] = useState<number | null>(null)
   /** 仅在「全部」时加载：各板块/渠道小计（与主统计同一次请求） */
   const [lineBreakdown, setLineBreakdown] = useState<
@@ -136,14 +159,16 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
   const buildQueryParams = useCallback(
     (scope: TransactionScopeFilter) => {
       const params = scopeToQueryParams(scope)
-      return appendPeriodToSearchParams(params, periodMode, viewMonth)
+      appendPeriodToSearchParams(params, periodMode, viewMonth, customRange)
+      if (categoryFilter) params.set('category', categoryFilter)
+      return params
     },
-    [periodMode, viewMonth]
+    [periodMode, viewMonth, customRange, categoryFilter]
   )
 
   const activePeriodLabel = useMemo(
-    () => periodLabel(periodMode, viewMonth),
-    [periodMode, viewMonth]
+    () => periodLabel(periodMode, viewMonth, customRange),
+    [periodMode, viewMonth, customRange]
   )
 
   const monthProgressHint = useMemo(
@@ -155,6 +180,15 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
     if (periodMode !== 'month' || prevMonthNetProfit === null) return null
     return stats.netProfit - prevMonthNetProfit
   }, [periodMode, prevMonthNetProfit, stats.netProfit])
+
+  const clearCategoryFilter = useCallback(() => {
+    setCategoryFilter('')
+    if (!searchParams) return
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete('category')
+    const qs = next.toString()
+    router.replace(qs ? `?${qs}` : window.location.pathname)
+  }, [router, searchParams])
   
   // 主数据加载 useEffect（统计范围或时间范围变化时）
   useEffect(() => {
@@ -173,7 +207,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
     })
 
     return () => controller.abort()
-  }, [statsScope, periodMode, viewMonth])
+  }, [statsScope, periodMode, viewMonth, customRange, categoryFilter])
 
   // 监听订单更新事件，自动刷新交易列表和统计数据
   useEffect(() => {
@@ -183,15 +217,17 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
       loadPrevMonthStats()
     }
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'orderUpdated') handleOrderUpdated()
+      if (e.key === 'orderUpdated' || e.key === 'transactionUpdated') handleOrderUpdated()
     }
     window.addEventListener('orderUpdated', handleOrderUpdated)
+    window.addEventListener('transactionUpdated', handleOrderUpdated)
     window.addEventListener('storage', handleStorageChange)
     return () => {
       window.removeEventListener('orderUpdated', handleOrderUpdated)
+      window.removeEventListener('transactionUpdated', handleOrderUpdated)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [statsScope, periodMode, viewMonth])
+  }, [statsScope, periodMode, viewMonth, customRange, categoryFilter])
   
   // 加载资产估值数据
   useEffect(() => {
@@ -335,6 +371,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
       const params = scopeToQueryParams(statsScope)
       params.set('startDate', startDate)
       params.set('endDate', endDate)
+      if (categoryFilter) params.set('category', categoryFilter)
       const data = await apiFetch<{ netProfit?: number }>(
         `/api/transactions/stats?${params.toString()}`,
         { signal }
@@ -453,18 +490,26 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
   }
 
   function goToMonth(month: Date) {
+    setCustomRange(null)
     setPeriodMode('month')
     setViewMonth(month)
   }
 
   function goToPreviousMonth() {
+    setCustomRange(null)
     setPeriodMode('month')
     setViewMonth((m) => shiftMonth(m, -1))
   }
 
   function goToNextMonth() {
+    setCustomRange(null)
     setPeriodMode('month')
     setViewMonth((m) => shiftMonth(m, 1))
+  }
+
+  function goToAllPeriod() {
+    setCustomRange(null)
+    setPeriodMode('all')
   }
 
   const periodChipClass = (active: boolean) =>
@@ -488,7 +533,11 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">交易记录</h2>
-          <p className="text-muted-foreground">管理所有收入和支出记录</p>
+          <p className="text-muted-foreground">
+            {categoryFilter
+              ? `当前筛选类目「${categoryFilter}」· ${activePeriodLabel}`
+              : '管理所有收入和支出记录'}
+          </p>
         </div>
         <Button asChild className="w-full shrink-0 sm:w-auto">
           <Link
@@ -528,7 +577,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
               variant="outline"
               size="icon"
               className="h-9 w-9 shrink-0"
-              disabled={periodMode === 'all'}
+              disabled={periodMode !== 'month'}
               onClick={goToPreviousMonth}
               aria-label="上一月"
             >
@@ -542,7 +591,7 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
               variant="outline"
               size="icon"
               className="h-9 w-9 shrink-0"
-              disabled={periodMode === 'all'}
+              disabled={periodMode !== 'month'}
               onClick={goToNextMonth}
               aria-label="下一月"
             >
@@ -582,12 +631,48 @@ export function TransactionList({ initialScope = 'all' }: { initialScope?: Trans
             <button
               type="button"
               className={periodChipClass(periodMode === 'all')}
-              onClick={() => setPeriodMode('all')}
+              onClick={goToAllPeriod}
             >
               全部
             </button>
+            {periodMode === 'range' && customRange ? (
+              <button type="button" className={periodChipClass(true)} disabled>
+                区间
+              </button>
+            ) : null}
           </div>
         </div>
+        {(categoryFilter || periodMode === 'range') && (
+          <div className="flex flex-wrap items-center gap-2">
+            {categoryFilter ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-700">
+                类目：{categoryFilter}
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                  onClick={clearCategoryFilter}
+                  aria-label="清除类目筛选"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ) : null}
+            {periodMode === 'range' && customRange ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-700">
+                {activePeriodLabel}
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                  onClick={() => goToMonth(getCurrentMonthStart())}
+                  aria-label="切回本月"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ) : null}
+            <p className="text-[11px] text-muted-foreground">可清除筛选查看全部类目</p>
+          </div>
+        )}
         {monthProgressHint ? (
           <p className="text-xs text-muted-foreground">{monthProgressHint}</p>
         ) : null}

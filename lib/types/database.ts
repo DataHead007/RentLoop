@@ -148,6 +148,29 @@ export interface Order {
   third_party_rentals?: ThirdPartyRental[]
   shipping_fees?: ShippingFee[]
   badminton_order_lines?: BadmintonOrderLine[]
+  order_compensations?: OrderCompensation[]
+}
+
+export type CompensationDirection = 'income' | 'expense'
+export type CompensationAllocationMethod = 'manual' | 'rent_ratio' | 'purchase_ratio'
+
+export interface OrderCompensation {
+  id: string
+  order_id: string
+  order_item_id: string | null
+  item_id: string | null
+  direction: CompensationDirection
+  category: string
+  /** 绝对值，方向由 direction 决定 */
+  amount: number
+  reason: string | null
+  allocation_method: CompensationAllocationMethod | null
+  transaction_id: string | null
+  transaction_date: string
+  created_at: string
+  updated_at: string
+  item?: Item
+  order_item?: OrderItem
 }
 
 export interface OrderItem {

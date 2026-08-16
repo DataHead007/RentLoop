@@ -8,7 +8,7 @@ import {
 } from 'date-fns'
 import { formatDateToLocalString } from '@/lib/utils/format'
 
-export type TransactionPeriodMode = 'month' | 'all'
+export type TransactionPeriodMode = 'month' | 'all' | 'range'
 
 export type MonthRange = {
   startDate: string
@@ -64,15 +64,36 @@ export function formatMonthProgressHint(month: Date, reference = new Date()): st
 export function appendPeriodToSearchParams(
   params: URLSearchParams,
   periodMode: TransactionPeriodMode,
-  viewMonth: Date
+  viewMonth: Date,
+  customRange?: MonthRange | null
 ): URLSearchParams {
   if (periodMode === 'all') return params
+  if (periodMode === 'range' && customRange?.startDate && customRange?.endDate) {
+    params.set('startDate', customRange.startDate)
+    params.set('endDate', customRange.endDate)
+    return params
+  }
   const { startDate, endDate } = getMonthRange(viewMonth)
   params.set('startDate', startDate)
   params.set('endDate', endDate)
   return params
 }
 
-export function periodLabel(periodMode: TransactionPeriodMode, viewMonth: Date): string {
-  return periodMode === 'all' ? '全部累计' : formatMonthLabel(viewMonth)
+export function formatDateRangeLabel(range: MonthRange): string {
+  const fmt = (s: string) => {
+    const [y, m, d] = s.split('-')
+    if (!y || !m || !d) return s
+    return `${y}/${Number(m)}/${Number(d)}`
+  }
+  return `${fmt(range.startDate)} – ${fmt(range.endDate)}`
+}
+
+export function periodLabel(
+  periodMode: TransactionPeriodMode,
+  viewMonth: Date,
+  customRange?: MonthRange | null
+): string {
+  if (periodMode === 'all') return '全部累计'
+  if (periodMode === 'range' && customRange) return formatDateRangeLabel(customRange)
+  return formatMonthLabel(viewMonth)
 }

@@ -29,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { OrderCompensationSection } from '@/components/orders/OrderCompensationSection'
 import { apiFetch, ApiFetchError } from '@/lib/api/fetcher'
 
 export function OrderDetail() {
@@ -780,6 +781,20 @@ export function OrderDetail() {
           </Card>
         )
       })()}
+
+      {!isBadminton && order.order_items && order.order_items.length > 0 ? (
+        <OrderCompensationSection
+          order={order}
+          orderId={orderId}
+          onSaved={async () => {
+            await mutateOrder()
+            await revalidateDashboards()
+            await revalidateOrdersLists()
+            window.dispatchEvent(new CustomEvent('orderUpdated'))
+            localStorage.setItem('orderUpdated', Date.now().toString())
+          }}
+        />
+      ) : null}
 
       <div className="grid gap-6 md:grid-cols-2">
         {(() => {

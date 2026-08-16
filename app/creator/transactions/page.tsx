@@ -1,5 +1,10 @@
+import { Suspense } from 'react'
 import { TransactionList } from '@/components/transactions/TransactionList'
 
 export default function CreatorTransactionsPage() {
-  return <TransactionList initialScope="creator" />
+  return (
+    <Suspense fallback={<div className="h-64 animate-pulse rounded bg-muted" />}>
+      <TransactionList initialScope="creator" />
+    </Suspense>
+  )
 }

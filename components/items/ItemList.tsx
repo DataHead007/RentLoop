@@ -19,19 +19,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Package, Plus, TrendingUp, Trash2, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, DollarSign, Loader2 } from 'lucide-react'
+import { Package, Plus, TrendingUp, Trash2, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, DollarSign, Loader2, Wrench } from 'lucide-react'
 import type { ItemWithStats } from '@/lib/types/database'
 import Link from 'next/link'
 import { clampPaybackForBar, formatCurrency } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { ItemListMobileCard } from './ItemListMobileCard'
 import { ItemListShortNameEditor } from './ItemListShortNameEditor'
+import { ItemStatusWithSchedule } from './ItemStatusWithSchedule'
+import { AddMaintenanceDialog } from './AddMaintenanceDialog'
+import type { ItemRentalScheduleEntry, ItemRentalSchedulesMap } from '@/lib/items/itemRentalSchedule'
 import {
   getRentalLineForCategory,
   getRentalLineLabel,
   RENTAL_LINE_OPTIONS,
 } from '@/lib/categories/rentalLine'
 import { buildItemListDisplay, type ItemCategoryGroup } from '@/lib/items/itemListGrouping'
+import {
+  getItemListDisplayStatusBadgeVariant,
+  getItemListDisplayStatusLabel,
+  resolveItemListDisplayStatusKey,
+} from '@/lib/items/itemDisplayStatus'
 import {
   ItemListRowContextBadges,
   ItemListSectionBreadcrumb,
@@ -46,6 +54,7 @@ export function ItemList() {
   const [error, setError] = useState<string | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<ItemWithStats | null>(null)
+  const [maintenanceItem, setMaintenanceItem] = useState<ItemWithStats | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -53,6 +62,7 @@ export function ItemList() {
   const [rentalLineFilter, setRentalLineFilter] = useState<string>('all')
   const [assetsValue, setAssetsValue] = useState<{ totalPurchasePrice: number; assetCount: number } | null>(null)
   const [loadingAssetsValue, setLoadingAssetsValue] = useState(false)
+  const [rentalSchedulesByItem, setRentalSchedulesByItem] = useState<ItemRentalSchedulesMap>({})
 
   // 从 URL 参数读取品类筛选
   useEffect(() => {
@@ -81,9 +91,23 @@ export function ItemList() {
     }
   }, [])
 
+  const loadRentalSchedules = useCallback(async () => {
+    try {
+      const res = await fetch('/api/items/rental-schedules', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json()
+      setRentalSchedulesByItem(
+        data?.schedules && typeof data.schedules === 'object' ? data.schedules : {}
+      )
+    } catch (error) {
+      console.error('Failed to load rental schedules:', error)
+    }
+  }, [])
+
   useEffect(() => {
     loadItems()
-  }, [loadItems])
+    loadRentalSchedules()
+  }, [loadItems, loadRentalSchedules])
 
   const loadAssetsValue = useCallback(async () => {
     try {
@@ -117,7 +141,10 @@ export function ItemList() {
   // 监听订单/交易更新事件，刷新资产统计（订单完成、快速收货等会创建交易记录）
   useEffect(() => {
     const handleUpdated = () => {
-      loadItems().then(() => loadAssetsValue())
+      loadItems().then(() => {
+        loadAssetsValue()
+        loadRentalSchedules()
+      })
     }
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'orderUpdated' || e.key === 'transactionUpdated') handleUpdated()
@@ -130,7 +157,7 @@ export function ItemList() {
       window.removeEventListener('transactionUpdated', handleUpdated)
       window.removeEventListener('storage', handleStorageChange)
     }
-  }, [loadItems, loadAssetsValue])
+  }, [loadItems, loadAssetsValue, loadRentalSchedules])
 
   // 根据品类返回对应的图标
   const getCategoryIcon = (categoryName: string | undefined | null) => {
@@ -211,32 +238,27 @@ export function ItemList() {
     }
   }, [itemToDelete, loadItems])
 
-  // 使用 useMemo 缓存状态映射，避免每次渲染都重新创建对象
-  const statusBadgeVariants = useMemo(() => ({
-    available: 'success',
-    rented: 'default',
-    in_use: 'default',
-    maintenance: 'warning',
-    retired: 'secondary',
-    sold: 'secondary',
-  } as const), [])
+  const getSchedulesForItem = useCallback(
+    (itemId: string): ItemRentalScheduleEntry[] | undefined => {
+      const rows = rentalSchedulesByItem[itemId]
+      return rows?.length ? rows : undefined
+    },
+    [rentalSchedulesByItem]
+  )
 
-  const statusLabels = useMemo(() => ({
-    available: '可用',
-    rented: '出租中',
-    in_use: '使用中',
-    maintenance: '维护中',
-    retired: '已退役',
-    sold: '已售出',
-  } as const), [])
+  const getListStatusKeyForItem = useCallback(
+    (item: ItemWithStats) =>
+      resolveItemListDisplayStatusKey(item.status, getSchedulesForItem(item.id)),
+    [getSchedulesForItem]
+  )
 
-  const getStatusBadgeVariant = useCallback((status: string) => {
-    return statusBadgeVariants[status as keyof typeof statusBadgeVariants] || 'secondary'
-  }, [statusBadgeVariants])
+  const getStatusBadgeVariant = useCallback((statusKey: string) => {
+    return getItemListDisplayStatusBadgeVariant(statusKey)
+  }, [])
 
-  const getStatusLabel = useCallback((status: string) => {
-    return statusLabels[status as keyof typeof statusLabels] || status
-  }, [statusLabels])
+  const getStatusLabel = useCallback((statusKey: string) => {
+    return getItemListDisplayStatusLabel(statusKey)
+  }, [])
 
   // 获取所有唯一品类
   const categories = useMemo(() => {
@@ -249,10 +271,11 @@ export function ItemList() {
     return Array.from(categorySet).sort()
   }, [items])
 
-  // 计算统计信息
+  // 计算统计信息（展示状态：区分「可用」与「已预订」）
   const stats = useMemo(() => {
     const statusCounts = {
       available: 0,
+      booked: 0,
       rented: 0,
       in_use: 0,
       maintenance: 0,
@@ -263,20 +286,22 @@ export function ItemList() {
     let totalNetProfit = 0
     let totalPaybackProgress = 0
 
-    items.forEach(item => {
-      // 统计各状态数量
-      if (item.status in statusCounts) {
-        statusCounts[item.status as keyof typeof statusCounts]++
+    items.forEach((item) => {
+      const displayKey = resolveItemListDisplayStatusKey(
+        item.status,
+        rentalSchedulesByItem[item.id]
+      )
+      if (displayKey in statusCounts) {
+        statusCounts[displayKey as keyof typeof statusCounts]++
       }
 
-      // 计算总净收益
       totalNetProfit += item.net_profit || 0
-
       totalPaybackProgress += item.payback_progress_pct ?? 0
     })
 
     const averagePaybackProgress = items.length > 0 ? totalPaybackProgress / items.length : 0
     const availableCount = statusCounts.available
+    const bookedCount = statusCounts.booked
     const rentedCount = statusCounts.rented + statusCounts.in_use
     const soldCount = statusCounts.sold
 
@@ -285,11 +310,12 @@ export function ItemList() {
       totalNetProfit,
       averagePaybackProgress,
       availableCount,
+      bookedCount,
       rentedCount,
       soldCount,
       totalCount: items.length,
     }
-  }, [items])
+  }, [items, rentalSchedulesByItem])
 
   const applyListFilters = useCallback(
     (source: ItemWithStats[], opts?: { includeRentalLine?: boolean }) => {
@@ -301,7 +327,7 @@ export function ItemList() {
         if (categoryFilter !== 'all' && item.category?.name !== categoryFilter) {
           return false
         }
-        if (statusFilter !== 'all' && item.status !== statusFilter) {
+        if (statusFilter !== 'all' && getListStatusKeyForItem(item) !== statusFilter) {
           return false
         }
         if (searchQuery) {
@@ -317,7 +343,7 @@ export function ItemList() {
         return true
       })
     },
-    [rentalLineFilter, categoryFilter, statusFilter, searchQuery]
+    [rentalLineFilter, categoryFilter, statusFilter, searchQuery, getListStatusKeyForItem]
   )
 
   const filteredItems = useMemo(
@@ -336,8 +362,9 @@ export function ItemList() {
       buildItemListDisplay(filteredItems, {
         statusFilter,
         groupByStatusFirst: rentalLineFilter !== 'all',
+        getListStatusKey: getListStatusKeyForItem,
       }),
-    [filteredItems, statusFilter, rentalLineFilter]
+    [filteredItems, statusFilter, rentalLineFilter, getListStatusKeyForItem]
   )
 
   const useStatusFirstLayout =
@@ -355,8 +382,12 @@ export function ItemList() {
     listDisplay.soldCount > 0 && (statusFilter === 'all' || statusFilter === 'sold')
 
   const navDisplay = useMemo(
-    () => buildItemListDisplay(itemsForNav, { statusFilter: 'all' }),
-    [itemsForNav]
+    () =>
+      buildItemListDisplay(itemsForNav, {
+        statusFilter: 'all',
+        getListStatusKey: getListStatusKeyForItem,
+      }),
+    [itemsForNav, getListStatusKeyForItem]
   )
 
   const breadcrumbSegments = useMemo(() => {
@@ -420,6 +451,8 @@ export function ItemList() {
     return parts + (item.serial_number ? ` · ${item.serial_number}` : '')
   }
 
+  const getItemDisplayStatusKey = (item: ItemWithStats) => getListStatusKeyForItem(item)
+
   const renderTableRow = (
     item: ItemWithStats,
     opts?: { sold?: boolean; familyLabel?: string }
@@ -429,6 +462,8 @@ export function ItemList() {
     const netProfit = item.net_profit || 0
     const muted = opts?.sold
     const familyLabel = opts?.familyLabel ?? getRentalLineLabelForItem(item)
+
+    const displayStatusKey = getItemDisplayStatusKey(item)
 
     return (
       <TableRow
@@ -442,7 +477,8 @@ export function ItemList() {
           <ItemListRowContextBadges
             familyLabel={familyLabel}
             categoryName={item.category?.name || '未分类'}
-            statusLabel={getStatusLabel(item.status)}
+            statusLabel={getStatusLabel(displayStatusKey)}
+            statusSchedules={getSchedulesForItem(item.id)}
             showFamily={showFamilyOnRow}
             showCategory={showCategoryOnRow}
             showStatus={showStatusOnRow}
@@ -505,14 +541,28 @@ export function ItemList() {
           {formatCurrency(item.total_revenue || 0)}
         </TableCell>
         <TableCell className="py-5 align-top">
-          <Badge variant={getStatusBadgeVariant(item.status)} className="font-normal">
-            {getStatusLabel(item.status)}
-          </Badge>
+          <ItemStatusWithSchedule
+            label={getStatusLabel(displayStatusKey)}
+            variant={getStatusBadgeVariant(displayStatusKey)}
+            schedules={getSchedulesForItem(item.id)}
+          />
         </TableCell>
         <TableCell className="py-5 pr-2 text-right align-top">
-          <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-            <Link href={`/items/${item.id}`}>详情</Link>
-          </Button>
+          <div className="flex items-center justify-end gap-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => setMaintenanceItem(item)}
+              aria-label={`添加维护 · ${item.short_name || item.name}`}
+              title="添加维护"
+            >
+              <Wrench className="h-3.5 w-3.5 text-zinc-400 hover:text-zinc-700" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+              <Link href={`/items/${item.id}`}>详情</Link>
+            </Button>
+          </div>
         </TableCell>
         <TableCell className="py-5 pr-4 text-right align-top">
           <Button
@@ -617,7 +667,9 @@ export function ItemList() {
                 {stats.totalCount} 件
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                可用 {stats.availableCount} | 出租中 {stats.rentedCount} | 已售出 {stats.soldCount}
+                可用 {stats.availableCount}
+                {stats.bookedCount > 0 ? ` | 已预订 ${stats.bookedCount}` : ''} | 出租中{' '}
+                {stats.rentedCount} | 已售出 {stats.soldCount}
               </p>
             </CardContent>
           </Card>
@@ -744,6 +796,7 @@ export function ItemList() {
                   <SelectContent>
                     <SelectItem value="all">全部状态</SelectItem>
                     <SelectItem value="available">可用</SelectItem>
+                    <SelectItem value="booked">已预订</SelectItem>
                     <SelectItem value="rented">出租中</SelectItem>
                     <SelectItem value="in_use">使用中</SelectItem>
                     <SelectItem value="maintenance">维护中</SelectItem>
@@ -794,11 +847,13 @@ export function ItemList() {
                             <ItemListMobileCard
                               key={item.id}
                               item={item}
+                              displayStatusKey={getListStatusKeyForItem(item)}
                               muted={opts?.sold}
                               familyLabel={opts?.familyLabel ?? getRentalLineLabelForItem(item)}
                               showFamily={showFamilyOnRow}
                               showCategory={showCategoryOnRow}
                               showStatus={showStatusOnRow}
+                              statusSchedules={getSchedulesForItem(item.id)}
                               getCategoryIcon={getCategoryIcon}
                               getStatusBadgeVariant={getStatusBadgeVariant}
                               getStatusLabel={getStatusLabel}
@@ -806,6 +861,7 @@ export function ItemList() {
                                 setItemToDelete(it)
                                 setDeleteDialogOpen(true)
                               }}
+                              onAddMaintenance={setMaintenanceItem}
                               onShortNameSaved={handleShortNameSaved}
                             />
                           ))
@@ -970,6 +1026,20 @@ export function ItemList() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {maintenanceItem ? (
+        <AddMaintenanceDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setMaintenanceItem(null)
+          }}
+          itemId={maintenanceItem.id}
+          itemName={maintenanceItem.short_name || maintenanceItem.name}
+          onSuccess={async () => {
+            await loadItems()
+          }}
+        />
+      ) : null}
     </div>
   )
 }
