@@ -98,7 +98,7 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>AI 功能</CardTitle>
             <CardDescription>
-              配置硅基流动 API Key，使用 Qwen3-VL-32B 完成订单/客户解析（含图片）与发货日推荐。Key
+              配置硅基流动 API Key，使用 Qwen3-VL 完成订单/客户解析（含图片）与发货日推荐。Key
               仅保存在本机浏览器，请求时由前端传给本站 API，不会写入业务数据库。
             </CardDescription>
           </CardHeader>
@@ -125,7 +125,7 @@ export default function SettingsPage() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                默认模型 Qwen/Qwen3-VL-32B-Instruct；可在服务端环境变量 SILICONFLOW_VL_MODEL 覆盖。控制台：https://cloud.siliconflow.cn/
+                默认模型 Qwen/Qwen3-VL-30B-A3B-Instruct（失败自动降级）；可在服务端环境变量 SILICONFLOW_VL_MODEL 覆盖。控制台：https://cloud.siliconflow.cn/
               </p>
             </div>
           </CardContent>
