@@ -6,9 +6,14 @@ import { cn } from '@/lib/utils'
 
 const EMPTY_VALUE = '__empty__'
 const CUSTOM_TRIGGER = '__custom__'
+/** 默认整点列表从 06:00 起；00:00–05:59 仅在自定义里选 */
+const PRIMARY_HOUR_START = 6
 
-function buildHourlyOptions(): string[] {
-  return Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
+function buildPrimaryHourlyOptions(): string[] {
+  return Array.from({ length: 24 - PRIMARY_HOUR_START }, (_, i) => {
+    const h = i + PRIMARY_HOUR_START
+    return `${String(h).padStart(2, '0')}:00`
+  })
 }
 
 function buildTenMinuteOptions(): string[] {
@@ -21,7 +26,7 @@ function buildTenMinuteOptions(): string[] {
   return options
 }
 
-const HOURLY_OPTIONS = buildHourlyOptions()
+const PRIMARY_HOURLY_OPTIONS = buildPrimaryHourlyOptions()
 const TEN_MINUTE_OPTIONS = buildTenMinuteOptions()
 
 /** 归一化为 HH:mm；无法解析则返回空字符串 */
@@ -42,6 +47,24 @@ export function isOnTheHour(value?: string | null): boolean {
   return !!hm && hm.endsWith(':00')
 }
 
+function getHour(value?: string | null): number | null {
+  const hm = normalizeTimeToHm(value)
+  if (!hm) return null
+  return Number(hm.split(':')[0])
+}
+
+/** 凌晨 0 点–5 点 59 分，默认整点列表不展示 */
+export function isEarlyMorningTime(value?: string | null): boolean {
+  const hour = getHour(value)
+  return hour !== null && hour < PRIMARY_HOUR_START
+}
+
+function needsCustomTimePicker(value?: string | null): boolean {
+  const hm = normalizeTimeToHm(value)
+  if (!hm) return false
+  return !isOnTheHour(hm) || isEarlyMorningTime(hm)
+}
+
 interface TimeSelect10MinProps {
   id?: string
   value: string
@@ -53,7 +76,7 @@ interface TimeSelect10MinProps {
 }
 
 /**
- * 羽毛球等服务时间：默认整点下拉（手机友好），需要时可展开 10 分钟自定义。
+ * 羽毛球等服务时间：默认 06:00–23:00 整点；凌晨时段与非整点在自定义（10 分钟）里选。
  */
 export function TimeSelect10Min({
   id,
@@ -65,7 +88,7 @@ export function TimeSelect10Min({
   emptyLabel = '未设置',
 }: TimeSelect10MinProps) {
   const normalized = normalizeTimeToHm(value)
-  const needsCustom = normalized !== '' && !isOnTheHour(normalized)
+  const needsCustom = needsCustomTimePicker(normalized)
   const [customMode, setCustomMode] = useState(needsCustom)
 
   useEffect(() => {
@@ -81,17 +104,31 @@ export function TimeSelect10Min({
 
   const hourlySelectValue = useMemo(() => {
     if (!normalized) return allowEmpty ? EMPTY_VALUE : undefined
-    if (isOnTheHour(normalized)) return normalized
+    if (isOnTheHour(normalized) && !isEarlyMorningTime(normalized)) return normalized
     return CUSTOM_TRIGGER
   }, [normalized, allowEmpty])
+
+  const handleBackToHourly = () => {
+    if (!normalized) {
+      setCustomMode(false)
+      return
+    }
+    const [hStr, mStr] = normalized.split(':')
+    const h = Number(hStr)
+    if (h < PRIMARY_HOUR_START) {
+      onChange('06:00')
+      setCustomMode(false)
+      return
+    }
+    const snapped = mStr === '00' ? normalized : `${hStr}:00`
+    onChange(snapped)
+    setCustomMode(false)
+  }
 
   if (customMode) {
     return (
       <div className="space-y-1.5">
-        <Select
-          value={normalized || undefined}
-          onValueChange={(v) => onChange(v)}
-        >
+        <Select value={normalized || undefined} onValueChange={(v) => onChange(v)}>
           <SelectTrigger id={id} className={cn(className)}>
             <SelectValue placeholder={placeholder} />
           </SelectTrigger>
@@ -106,15 +143,9 @@ export function TimeSelect10Min({
         <button
           type="button"
           className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          onClick={() => {
-            setCustomMode(false)
-            if (normalized) {
-              const [h] = normalized.split(':')
-              onChange(`${h}:00`)
-            }
-          }}
+          onClick={handleBackToHourly}
         >
-          改回整点选择
+          {isEarlyMorningTime(normalized) ? '改回常用整点（06:00 起）' : '改回整点选择'}
         </button>
       </div>
     )
@@ -142,17 +173,14 @@ export function TimeSelect10Min({
         </SelectTrigger>
         <SelectContent className="max-h-72">
           {allowEmpty && <SelectItem value={EMPTY_VALUE}>{emptyLabel}</SelectItem>}
-          {HOURLY_OPTIONS.map((t) => (
+          {PRIMARY_HOURLY_OPTIONS.map((t) => (
             <SelectItem key={t} value={t}>
               {t}
             </SelectItem>
           ))}
-          <SelectItem value={CUSTOM_TRIGGER}>自定义时间（10 分钟）</SelectItem>
+          <SelectItem value={CUSTOM_TRIGGER}>自定义时间（含凌晨 / 10 分钟）</SelectItem>
         </SelectContent>
       </Select>
-      {needsCustom && normalized && (
-        <p className="text-xs text-muted-foreground">当前：{normalized}（非整点）</p>
-      )}
     </div>
   )
 }
