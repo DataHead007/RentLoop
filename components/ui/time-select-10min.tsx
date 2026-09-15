@@ -1,10 +1,15 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
 const EMPTY_VALUE = '__empty__'
+const CUSTOM_TRIGGER = '__custom__'
+
+function buildHourlyOptions(): string[] {
+  return Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
+}
 
 function buildTenMinuteOptions(): string[] {
   const options: string[] = []
@@ -16,6 +21,7 @@ function buildTenMinuteOptions(): string[] {
   return options
 }
 
+const HOURLY_OPTIONS = buildHourlyOptions()
 const TEN_MINUTE_OPTIONS = buildTenMinuteOptions()
 
 /** 归一化为 HH:mm；无法解析则返回空字符串 */
@@ -31,19 +37,9 @@ export function normalizeTimeToHm(value?: string | null): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-/** 将分钟就近对齐到 10 分钟（用于展示旧数据） */
-export function snapTimeToTenMinutes(value?: string | null): string {
+export function isOnTheHour(value?: string | null): boolean {
   const hm = normalizeTimeToHm(value)
-  if (!hm) return ''
-  const [hStr, mStr] = hm.split(':')
-  const h = Number(hStr)
-  let m = Math.round(Number(mStr) / 10) * 10
-  let hour = h
-  if (m === 60) {
-    m = 0
-    hour = (hour + 1) % 24
-  }
-  return `${String(hour).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  return !!hm && hm.endsWith(':00')
 }
 
 interface TimeSelect10MinProps {
@@ -57,7 +53,7 @@ interface TimeSelect10MinProps {
 }
 
 /**
- * 手机端原生 type=time 常忽略 step，改用固定 10 分钟档位的下拉。
+ * 羽毛球等服务时间：默认整点下拉（手机友好），需要时可展开 10 分钟自定义。
  */
 export function TimeSelect10Min({
   id,
@@ -69,37 +65,94 @@ export function TimeSelect10Min({
   emptyLabel = '未设置',
 }: TimeSelect10MinProps) {
   const normalized = normalizeTimeToHm(value)
-  const options = useMemo(() => {
+  const needsCustom = normalized !== '' && !isOnTheHour(normalized)
+  const [customMode, setCustomMode] = useState(needsCustom)
+
+  useEffect(() => {
+    if (needsCustom) setCustomMode(true)
+  }, [needsCustom])
+
+  const customOptions = useMemo(() => {
     if (normalized && !TEN_MINUTE_OPTIONS.includes(normalized)) {
       return [normalized, ...TEN_MINUTE_OPTIONS]
     }
     return TEN_MINUTE_OPTIONS
   }, [normalized])
 
-  const selectValue = normalized || (allowEmpty ? EMPTY_VALUE : undefined)
+  const hourlySelectValue = useMemo(() => {
+    if (!normalized) return allowEmpty ? EMPTY_VALUE : undefined
+    if (isOnTheHour(normalized)) return normalized
+    return CUSTOM_TRIGGER
+  }, [normalized, allowEmpty])
+
+  if (customMode) {
+    return (
+      <div className="space-y-1.5">
+        <Select
+          value={normalized || undefined}
+          onValueChange={(v) => onChange(v)}
+        >
+          <SelectTrigger id={id} className={cn(className)}>
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent className="max-h-72">
+            {customOptions.map((t) => (
+              <SelectItem key={t} value={t}>
+                {t}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          type="button"
+          className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          onClick={() => {
+            setCustomMode(false)
+            if (normalized) {
+              const [h] = normalized.split(':')
+              onChange(`${h}:00`)
+            }
+          }}
+        >
+          改回整点选择
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <Select
-      value={selectValue}
-      onValueChange={(v) => {
-        if (v === EMPTY_VALUE) {
-          onChange('')
-          return
-        }
-        onChange(v)
-      }}
-    >
-      <SelectTrigger id={id} className={cn(className)}>
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent className="max-h-72">
-        {allowEmpty && <SelectItem value={EMPTY_VALUE}>{emptyLabel}</SelectItem>}
-        {options.map((t) => (
-          <SelectItem key={t} value={t}>
-            {t}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="space-y-1.5">
+      <Select
+        value={hourlySelectValue}
+        onValueChange={(v) => {
+          if (v === EMPTY_VALUE) {
+            onChange('')
+            return
+          }
+          if (v === CUSTOM_TRIGGER) {
+            setCustomMode(true)
+            if (!normalized) onChange('19:00')
+            return
+          }
+          onChange(v)
+        }}
+      >
+        <SelectTrigger id={id} className={cn(className)}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent className="max-h-72">
+          {allowEmpty && <SelectItem value={EMPTY_VALUE}>{emptyLabel}</SelectItem>}
+          {HOURLY_OPTIONS.map((t) => (
+            <SelectItem key={t} value={t}>
+              {t}
+            </SelectItem>
+          ))}
+          <SelectItem value={CUSTOM_TRIGGER}>自定义时间（10 分钟）</SelectItem>
+        </SelectContent>
+      </Select>
+      {needsCustom && normalized && (
+        <p className="text-xs text-muted-foreground">当前：{normalized}（非整点）</p>
+      )}
+    </div>
   )
 }
