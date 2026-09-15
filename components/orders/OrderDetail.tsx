@@ -15,6 +15,7 @@ import { ShippingDialog } from './ShippingDialog'
 import { ArrowLeft, Package, User, DollarSign, Camera, ShoppingBag, Truck, Hash, CheckCircle2, Loader2, Edit, RotateCcw, Calendar as CalendarLucide, Pencil, Check, X } from 'lucide-react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TimeSelect10Min } from '@/components/ui/time-select-10min'
 import type { Order } from '@/lib/types/database'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
@@ -826,20 +827,16 @@ export function OrderDetail() {
                         </div>
                         <div className="space-y-2">
                           <Label>开始时间</Label>
-                          <Input
-                            type="time"
-                            step={600}
+                          <TimeSelect10Min
                             value={draftDates.service_start_time || ''}
-                            onChange={(e) => setDraftDates((d) => ({ ...d, service_start_time: e.target.value }))}
+                            onChange={(v) => setDraftDates((d) => ({ ...d, service_start_time: v }))}
                           />
                         </div>
                         <div className="space-y-2">
                           <Label>结束时间</Label>
-                          <Input
-                            type="time"
-                            step={600}
+                          <TimeSelect10Min
                             value={draftDates.service_end_time || ''}
-                            onChange={(e) => setDraftDates((d) => ({ ...d, service_end_time: e.target.value }))}
+                            onChange={(v) => setDraftDates((d) => ({ ...d, service_end_time: v }))}
                           />
                         </div>
                       </div>

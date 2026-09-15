@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TimeSelect10Min } from '@/components/ui/time-select-10min'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Loader2, Plus, Trash2, ChevronsUpDown } from 'lucide-react'
@@ -458,23 +459,19 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
             </div>
             <div className="space-y-2">
               <Label htmlFor="service_start_time">开始时间</Label>
-              <Input
+              <TimeSelect10Min
                 id="service_start_time"
-                type="time"
-                step={600}
                 value={service_start_time}
-                onChange={(e) => setService_start_time(e.target.value)}
+                onChange={setService_start_time}
                 placeholder="19:00"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="service_end_time">结束时间</Label>
-              <Input
+              <TimeSelect10Min
                 id="service_end_time"
-                type="time"
-                step={600}
                 value={service_end_time}
-                onChange={(e) => setService_end_time(e.target.value)}
+                onChange={setService_end_time}
                 placeholder="21:00"
               />
             </div>

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TimeSelect10Min } from '@/components/ui/time-select-10min'
 import { Loader2 } from 'lucide-react'
 import {
   BADMINTON_MATCH_DISCIPLINES,
@@ -202,12 +203,10 @@ export function BadmintonMatchForm({ matchId, initialRecord }: BadmintonMatchFor
             </div>
             <div className="space-y-2">
               <Label htmlFor="event_time">时间（可选）</Label>
-              <Input
+              <TimeSelect10Min
                 id="event_time"
-                type="time"
-                step={600}
                 value={form.event_time}
-                onChange={(e) => setForm({ ...form, event_time: e.target.value })}
+                onChange={(v) => setForm({ ...form, event_time: v })}
               />
             </div>
           </div>
