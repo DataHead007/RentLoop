@@ -205,6 +205,7 @@ export function BadmintonMatchForm({ matchId, initialRecord }: BadmintonMatchFor
               <Input
                 id="event_time"
                 type="time"
+                step={600}
                 value={form.event_time}
                 onChange={(e) => setForm({ ...form, event_time: e.target.value })}
               />

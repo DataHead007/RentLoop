@@ -828,6 +828,7 @@ export function OrderDetail() {
                           <Label>开始时间</Label>
                           <Input
                             type="time"
+                            step={600}
                             value={draftDates.service_start_time || ''}
                             onChange={(e) => setDraftDates((d) => ({ ...d, service_start_time: e.target.value }))}
                           />
@@ -836,6 +837,7 @@ export function OrderDetail() {
                           <Label>结束时间</Label>
                           <Input
                             type="time"
+                            step={600}
                             value={draftDates.service_end_time || ''}
                             onChange={(e) => setDraftDates((d) => ({ ...d, service_end_time: e.target.value }))}
                           />

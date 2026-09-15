@@ -461,6 +461,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
               <Input
                 id="service_start_time"
                 type="time"
+                step={600}
                 value={service_start_time}
                 onChange={(e) => setService_start_time(e.target.value)}
                 placeholder="19:00"
@@ -471,6 +472,7 @@ export function BadmintonOrderForm({ orderId, onSuccess, listRedirectPath = '/or
               <Input
                 id="service_end_time"
                 type="time"
+                step={600}
                 value={service_end_time}
                 onChange={(e) => setService_end_time(e.target.value)}
                 placeholder="21:00"
