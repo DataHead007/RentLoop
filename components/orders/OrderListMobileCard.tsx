@@ -260,6 +260,18 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
           <dd className="mt-0.5 min-w-0">{dateBlock}</dd>
         </div>
 
+        {order.notes?.trim() ? (
+          <div>
+            <dt className="text-xs font-medium text-muted-foreground">备注</dt>
+            <dd
+              className="mt-0.5 min-w-0 text-sm text-muted-foreground leading-snug line-clamp-2 break-words"
+              title={order.notes.trim()}
+            >
+              {order.notes.trim()}
+            </dd>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-3 text-sm">
           <div>
             <span className="text-muted-foreground">总金额 </span>

@@ -907,6 +907,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                   <TableHead className="min-w-0">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
                   <TableHead className="min-w-0">客户</TableHead>
                   <TableHead className="min-w-0">{isBadmintonOnlyView ? '上课时间' : '日期'}</TableHead>
+                  <TableHead className="min-w-0 w-[8.5rem] max-w-[10rem]">备注</TableHead>
                   <TableHead className="w-24 shrink-0 whitespace-nowrap">总金额</TableHead>
                   {!isBadmintonOnlyView && <TableHead className="w-24 shrink-0 whitespace-nowrap">押金</TableHead>}
                   <TableHead className="w-28 shrink-0">状态</TableHead>
@@ -1072,6 +1073,18 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                               </div>
                             )
                           })()
+                        )}
+                      </TableCell>
+                      <TableCell className="min-w-0 max-w-[10rem] align-top">
+                        {order.notes?.trim() ? (
+                          <span
+                            className="block text-sm leading-snug text-muted-foreground line-clamp-2 break-words"
+                            title={order.notes.trim()}
+                          >
+                            {order.notes.trim()}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(order.total_amount)}</TableCell>
