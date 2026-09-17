@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp, Scale, Wrench } from 'lucide-react'
+import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp, Scale, Wrench, Copy } from 'lucide-react'
 import type { Order } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd, getDateRangeForPreset } from '@/lib/utils/format'
@@ -497,6 +497,15 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
     }
   }, [toastError])
 
+  const copyOrderId = useCallback(async (raw: string) => {
+    try {
+      await navigator.clipboard.writeText(raw)
+      toast.success('订单编号已复制')
+    } catch {
+      toast.error('复制失败')
+    }
+  }, [])
+
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'pending':
@@ -899,19 +908,21 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               ))}
             </div>
             <div className="hidden min-w-0 lg:block">
-            <Table className="table-fixed !min-w-0 w-full [&_td]:align-top [&_td]:px-2.5 [&_td]:py-2.5 [&_th]:px-2.5 [&_th]:py-2.5">
+            <Table className="table-fixed !min-w-0 w-full [&_td]:align-middle [&_td]:px-2.5 [&_td]:py-2.5 [&_th]:px-2.5 [&_th]:py-2.5">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-20 shrink-0">类型</TableHead>
-                  <TableHead className="w-[7.5rem] shrink-0">订单编号</TableHead>
-                  <TableHead className="min-w-0">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
-                  <TableHead className="min-w-0">客户</TableHead>
-                  <TableHead className="min-w-0">{isBadmintonOnlyView ? '上课时间' : '日期'}</TableHead>
-                  <TableHead className="min-w-0 w-[8.5rem] max-w-[10rem]">备注</TableHead>
-                  <TableHead className="w-24 shrink-0 whitespace-nowrap">总金额</TableHead>
-                  {!isBadmintonOnlyView && <TableHead className="w-24 shrink-0 whitespace-nowrap">押金</TableHead>}
-                  <TableHead className="w-28 shrink-0">状态</TableHead>
-                  <TableHead className="min-w-[12.5rem] w-[13rem] shrink-0 text-right">操作</TableHead>
+                  <TableHead className="w-[4.5rem] shrink-0">类型</TableHead>
+                  <TableHead className="w-[7rem] shrink-0">订单编号</TableHead>
+                  <TableHead className="min-w-0 w-[7.5rem]">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
+                  <TableHead className="min-w-0 w-[6.5rem]">客户</TableHead>
+                  <TableHead className={cn('shrink-0 whitespace-nowrap', isBadmintonOnlyView ? 'w-[7.5rem]' : 'min-w-0')}>
+                    {isBadmintonOnlyView ? '上课时间' : '日期'}
+                  </TableHead>
+                  <TableHead className="min-w-0 w-[9rem] max-w-[10rem]">备注</TableHead>
+                  <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">总金额</TableHead>
+                  {!isBadmintonOnlyView && <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">押金</TableHead>}
+                  <TableHead className="w-24 shrink-0">状态</TableHead>
+                  <TableHead className="min-w-[11rem] w-[12rem] shrink-0 text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -926,7 +937,12 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                   const isUrgent = !isBadminton && order.status === 'in_progress' && daysUntilStart < 0 && daysUntilEnd >= 0 && daysUntilEnd <= 2
                   const st = (order as any).service_start_time
                   const et = (order as any).service_end_time
-                  const timeRange = st && et ? ` ${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : ''
+                  const timeOnly =
+                    st && et ? `${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : st ? String(st).slice(0, 5) : ''
+                  const displayId = order.order_number || order.id.slice(0, 8)
+                  const copyId = order.order_number || order.id
+                  const noteFull = order.notes?.trim() || ''
+                  const notePreview = noteFull.replace(/\s+/g, ' ')
 
                   return (
                     <TableRow
@@ -938,35 +954,54 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           {isBadminton ? '羽毛球' : '租赁'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-[7.5rem] font-mono text-xs align-top">
-                        <span className="block break-all leading-snug" title={order.order_number || order.id}>
-                          {order.order_number || order.id.slice(0, 8)}
-                        </span>
+                      <TableCell className="max-w-[7rem]">
+                        <div className="group flex items-center gap-0.5">
+                          <span
+                            className="min-w-0 truncate font-mono text-xs text-muted-foreground/80"
+                            title={copyId}
+                          >
+                            {displayId}
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/50 opacity-70 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                            aria-label="复制订单编号"
+                            onClick={() => copyOrderId(copyId)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                        </div>
                       </TableCell>
-                      <TableCell className="min-w-0 align-top">
+                      <TableCell className="min-w-0">
                         {isBadminton ? (
                           <div className="min-w-0 break-words">
-                            <div className="font-medium leading-snug">{(order as any).service_type || '-'}</div>
-                            <div className="text-sm text-muted-foreground leading-snug">{(order as any).location || '-'}</div>
+                            <div className="text-sm font-semibold leading-snug text-foreground">
+                              {(order as any).service_type || '-'}
+                            </div>
+                            <div className="text-xs leading-snug text-muted-foreground">
+                              {(order as any).location || '-'}
+                            </div>
                           </div>
                         ) : firstItem ? (
-                          <div className="flex min-w-0 items-start gap-2">
-                            {categoryIcon && <span className="mt-0.5 shrink-0">{categoryIcon}</span>}
+                          <div className="flex min-w-0 items-center gap-2">
+                            {categoryIcon && <span className="shrink-0">{categoryIcon}</span>}
                             <div className="min-w-0 break-words">
-                              <div className="font-medium leading-snug">{firstItem.short_name?.trim() || firstItem.name}</div>
+                              <div className="text-sm font-semibold leading-snug text-foreground">
+                                {firstItem.short_name?.trim() || firstItem.name}
+                              </div>
                               {firstItem.category && (
-                                <div className="text-sm text-muted-foreground leading-snug">{firstItem.category.name}</div>
+                                <div className="text-xs leading-snug text-muted-foreground">{firstItem.category.name}</div>
                               )}
-                              {itemCount > 1 && <div className="mt-1 text-xs text-muted-foreground">等 {itemCount} 项</div>}
+                              {itemCount > 1 && <div className="mt-0.5 text-xs text-muted-foreground">等 {itemCount} 项</div>}
                             </div>
                           </div>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="min-w-0 align-top">
+                      <TableCell className="min-w-0">
                         <div className="min-w-0 space-y-0.5 break-words">
-                          <div className="font-medium leading-snug">{order.customer_name}</div>
+                          <div className="text-sm font-medium leading-snug">{order.customer_name}</div>
                           {order.customer_phone && (
                             <div className="text-xs text-muted-foreground leading-snug break-all">{order.customer_phone}</div>
                           )}
@@ -996,17 +1031,20 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className="min-w-0 align-top">
+                      <TableCell className={cn(isBadmintonOnlyView ? 'w-[7.5rem]' : 'min-w-0')}>
                         {isBadminton ? (
-                          <span className="text-sm leading-snug break-words">
-                            {formatDateShort((order as any).service_date || order.start_date)}
-                            {timeRange}
-                          </span>
+                          <div className="whitespace-nowrap text-sm leading-snug">
+                            <div className="font-medium">
+                              {formatDateShort((order as any).service_date || order.start_date)}
+                            </div>
+                            {timeOnly ? (
+                              <div className="text-xs text-muted-foreground tabular-nums">{timeOnly}</div>
+                            ) : null}
+                          </div>
                         ) : (
                           (() => {
                             const isNotShipped = (order.status === 'pending' || order.status === 'confirmed') && daysUntilStart >= 0
                             const isInProgress = order.status === 'in_progress' && daysUntilStart < 0 && daysUntilEnd >= 0
-                            const isCompleted = order.status === 'completed' || order.status === 'cancelled' || daysUntilEnd < 0
                             return (
                               <div className="min-w-0 space-y-1 break-words">
                                 {isNotShipped ? (
@@ -1075,28 +1113,32 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           })()
                         )}
                       </TableCell>
-                      <TableCell className="min-w-0 max-w-[10rem] align-top">
-                        {order.notes?.trim() ? (
+                      <TableCell className="min-w-0 max-w-[10rem]">
+                        {notePreview ? (
                           <span
-                            className="block text-sm leading-snug text-muted-foreground line-clamp-2 break-words"
-                            title={order.notes.trim()}
+                            className="block max-w-full overflow-hidden text-sm leading-snug text-muted-foreground line-clamp-2 break-all"
+                            title={noteFull}
                           >
-                            {order.notes.trim()}
+                            {notePreview}
                           </span>
                         ) : (
                           <span className="text-sm text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="font-medium">{formatCurrency(order.total_amount)}</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums whitespace-nowrap">
+                        {formatCurrency(order.total_amount)}
+                      </TableCell>
                       {!isBadmintonOnlyView && (
-                        <TableCell>{order.total_deposit > 0 ? formatCurrency(order.total_deposit) : '-'}</TableCell>
+                        <TableCell className="text-right tabular-nums whitespace-nowrap">
+                          {order.total_deposit > 0 ? formatCurrency(order.total_deposit) : '-'}
+                        </TableCell>
                       )}
                       <TableCell>
                         <Badge variant={getStatusBadgeVariant(order.status)} className={getStatusBadgeClassName(order.status)}>
                           {getStatusLabel(order.status, isBadminton)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right align-top">
+                      <TableCell className="text-right">
                         <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-1 gap-y-1.5">
                           {!isBadminton && (order.status === 'pending' || order.status === 'confirmed') && (
                             <Button

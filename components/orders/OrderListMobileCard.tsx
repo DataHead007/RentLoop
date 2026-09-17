@@ -2,10 +2,12 @@
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 import type { Order } from '@/lib/types/database'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  Copy,
   Loader2,
   Package,
   RotateCcw,
@@ -82,13 +84,29 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
     daysUntilEnd <= 2
   const st = (order as { service_start_time?: string }).service_start_time
   const et = (order as { service_end_time?: string }).service_end_time
-  const timeRange = st && et ? ` ${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : ''
+  const timeOnly =
+    st && et ? `${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : st ? String(st).slice(0, 5) : ''
+  const displayId = order.order_number || order.id.slice(0, 8)
+  const copyId = order.order_number || order.id
+  const noteFull = order.notes?.trim() || ''
+  const notePreview = noteFull.replace(/\s+/g, ' ')
+
+  const copyOrderId = async () => {
+    try {
+      await navigator.clipboard.writeText(copyId)
+      toast.success('订单编号已复制')
+    } catch {
+      toast.error('复制失败')
+    }
+  }
 
   const dateBlock = isBadminton ? (
-    <span className="text-sm">
-      {formatDateShort((order as { service_date?: string }).service_date || order.start_date)}
-      {timeRange}
-    </span>
+    <div className="text-sm leading-snug">
+      <div className="font-medium">
+        {formatDateShort((order as { service_date?: string }).service_date || order.start_date)}
+      </div>
+      {timeOnly ? <div className="text-xs text-muted-foreground tabular-nums">{timeOnly}</div> : null}
+    </div>
   ) : (
     (() => {
       const isNotShipped = (order.status === 'pending' || order.status === 'confirmed') && daysUntilStart >= 0
@@ -192,9 +210,16 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
             {getStatusLabel(order.status, isBadminton)}
           </Badge>
         </div>
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">
-          {order.order_number || order.id.slice(0, 8)}
-        </span>
+        <button
+          type="button"
+          onClick={copyOrderId}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs text-muted-foreground/80 hover:bg-muted hover:text-foreground"
+          aria-label="复制订单编号"
+          title={copyId}
+        >
+          <span>{displayId}</span>
+          <Copy className="h-3 w-3 opacity-70" />
+        </button>
       </div>
 
       <dl className="mt-3 min-w-0 space-y-3 text-sm">
@@ -203,16 +228,20 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
           <dd className="mt-0.5 min-w-0 break-words">
             {isBadminton ? (
               <div>
-                <div className="font-medium">{(order as { service_type?: string }).service_type || '-'}</div>
-                <div className="text-sm text-muted-foreground">{(order as { location?: string }).location || '-'}</div>
+                <div className="font-semibold text-foreground">
+                  {(order as { service_type?: string }).service_type || '-'}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {(order as { location?: string }).location || '-'}
+                </div>
               </div>
             ) : firstItem ? (
               <div className="flex min-w-0 items-start gap-2">
                 {categoryIcon && <span className="mt-0.5 shrink-0">{categoryIcon}</span>}
                 <div className="min-w-0">
-                  <div className="font-medium">{firstItem.short_name?.trim() || firstItem.name}</div>
+                  <div className="font-semibold text-foreground">{firstItem.short_name?.trim() || firstItem.name}</div>
                   {firstItem.category && (
-                    <div className="text-muted-foreground">{firstItem.category.name}</div>
+                    <div className="text-xs text-muted-foreground">{firstItem.category.name}</div>
                   )}
                   {itemCount > 1 && (
                     <div className="mt-1 text-xs text-muted-foreground">等 {itemCount} 项</div>
@@ -228,7 +257,7 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
         <div>
           <dt className="text-xs font-medium text-muted-foreground">客户</dt>
           <dd className="mt-0.5 min-w-0 break-words">
-            <div>{order.customer_name}</div>
+            <div className="font-medium">{order.customer_name}</div>
             {order.customer_phone && (
               <div className="text-xs text-muted-foreground">{order.customer_phone}</div>
             )}
@@ -260,19 +289,19 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
           <dd className="mt-0.5 min-w-0">{dateBlock}</dd>
         </div>
 
-        {order.notes?.trim() ? (
+        {notePreview ? (
           <div>
             <dt className="text-xs font-medium text-muted-foreground">备注</dt>
             <dd
-              className="mt-0.5 min-w-0 text-sm text-muted-foreground leading-snug line-clamp-2 break-words"
-              title={order.notes.trim()}
+              className="mt-0.5 min-w-0 overflow-hidden text-sm leading-snug text-muted-foreground line-clamp-2 break-all"
+              title={noteFull}
             >
-              {order.notes.trim()}
+              {notePreview}
             </dd>
           </div>
         ) : null}
 
-        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border/60 pt-3 text-sm">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-border/60 pt-3 text-sm">
           <div>
             <span className="text-muted-foreground">总金额 </span>
             <span className="font-semibold tabular-nums">{formatCurrency(order.total_amount)}</span>
@@ -280,7 +309,9 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
           {!isBadmintonOnlyView && (
             <div>
               <span className="text-muted-foreground">押金 </span>
-              <span className="tabular-nums">{order.total_deposit > 0 ? formatCurrency(order.total_deposit) : '-'}</span>
+              <span className="tabular-nums">
+                {order.total_deposit > 0 ? formatCurrency(order.total_deposit) : '-'}
+              </span>
             </div>
           )}
         </div>
@@ -311,7 +342,12 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
           <Link href={`/orders/${order.id}`}>查看详情</Link>
         </Button>
         {order.status === 'completed' && !isBadminton && (
-          <Button variant="outline" size="sm" className="text-muted-foreground" onClick={() => setRollbackOrder(order)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => setRollbackOrder(order)}
+          >
             <RotateCcw className="mr-1 h-3.5 w-3.5" />
             回退
           </Button>
@@ -319,12 +355,11 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
         <Button
           variant="ghost"
           size="sm"
-          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          className="text-destructive"
           onClick={() => {
             setOrderToDelete(order)
             setDeleteDialogOpen(true)
           }}
-          aria-label="删除订单"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
