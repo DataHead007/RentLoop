@@ -2,12 +2,10 @@
 
 import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { toast } from 'sonner'
 import type { Order } from '@/lib/types/database'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
-  Copy,
   Loader2,
   Package,
   RotateCcw,
@@ -86,19 +84,8 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
   const et = (order as { service_end_time?: string }).service_end_time
   const timeOnly =
     st && et ? `${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : st ? String(st).slice(0, 5) : ''
-  const displayId = order.order_number || order.id.slice(0, 8)
-  const copyId = order.order_number || order.id
   const noteFull = order.notes?.trim() || ''
   const notePreview = noteFull.replace(/\s+/g, ' ')
-
-  const copyOrderId = async () => {
-    try {
-      await navigator.clipboard.writeText(copyId)
-      toast.success('订单编号已复制')
-    } catch {
-      toast.error('复制失败')
-    }
-  }
 
   const dateBlock = isBadminton ? (
     <div className="text-sm leading-snug">
@@ -198,7 +185,7 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
         getRowBackgroundClass(order.status, isUrgent)
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Badge
             variant={isBadminton ? 'secondary' : 'outline'}
@@ -210,16 +197,6 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
             {getStatusLabel(order.status, isBadminton)}
           </Badge>
         </div>
-        <button
-          type="button"
-          onClick={copyOrderId}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs text-muted-foreground/80 hover:bg-muted hover:text-foreground"
-          aria-label="复制订单编号"
-          title={copyId}
-        >
-          <span>{displayId}</span>
-          <Copy className="h-3 w-3 opacity-70" />
-        </button>
       </div>
 
       <dl className="mt-3 min-w-0 space-y-3 text-sm">

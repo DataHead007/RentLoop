@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp, Scale, Wrench, Copy } from 'lucide-react'
+import { Calendar, Plus, Trash2, DollarSign, Shield, Package, Aperture, Camera, Gamepad2, Joystick, Headphones, Monitor, Smartphone, Mic, Truck, Loader2, RotateCcw, Sparkles, TrendingUp, Scale, Wrench } from 'lucide-react'
 import type { Order } from '@/lib/types/database'
 import Link from 'next/link'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd, getDateRangeForPreset } from '@/lib/utils/format'
@@ -497,15 +497,6 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
     }
   }, [toastError])
 
-  const copyOrderId = useCallback(async (raw: string) => {
-    try {
-      await navigator.clipboard.writeText(raw)
-      toast.success('订单编号已复制')
-    } catch {
-      toast.error('复制失败')
-    }
-  }, [])
-
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'pending':
@@ -912,17 +903,23 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[4.5rem] shrink-0">类型</TableHead>
-                  <TableHead className="w-[7rem] shrink-0">订单编号</TableHead>
-                  <TableHead className="min-w-0 w-[7.5rem]">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
-                  <TableHead className="min-w-0 w-[6.5rem]">客户</TableHead>
+                  <TableHead className="min-w-0">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
+                  <TableHead className="min-w-0 w-[7rem]">客户</TableHead>
                   <TableHead className={cn('shrink-0 whitespace-nowrap', isBadmintonOnlyView ? 'w-[7.5rem]' : 'min-w-0')}>
                     {isBadmintonOnlyView ? '上课时间' : '日期'}
                   </TableHead>
-                  <TableHead className="min-w-0 w-[9rem] max-w-[10rem]">备注</TableHead>
+                  <TableHead className="min-w-0">备注</TableHead>
                   <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">总金额</TableHead>
                   {!isBadmintonOnlyView && <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">押金</TableHead>}
                   <TableHead className="w-24 shrink-0">状态</TableHead>
-                  <TableHead className="min-w-[11rem] w-[12rem] shrink-0 text-right">操作</TableHead>
+                  <TableHead
+                    className={cn(
+                      'shrink-0 text-right',
+                      isBadmintonOnlyView ? 'w-[5.5rem]' : 'min-w-[10rem] w-[11rem]'
+                    )}
+                  >
+                    操作
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -939,8 +936,6 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                   const et = (order as any).service_end_time
                   const timeOnly =
                     st && et ? `${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : st ? String(st).slice(0, 5) : ''
-                  const displayId = order.order_number || order.id.slice(0, 8)
-                  const copyId = order.order_number || order.id
                   const noteFull = order.notes?.trim() || ''
                   const notePreview = noteFull.replace(/\s+/g, ' ')
 
@@ -953,24 +948,6 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                         <Badge variant={isBadminton ? 'secondary' : 'outline'} className={isBadminton ? 'bg-emerald-50/95 text-emerald-800 border-emerald-200/70' : ''}>
                           {isBadminton ? '羽毛球' : '租赁'}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[7rem]">
-                        <div className="group flex items-center gap-0.5">
-                          <span
-                            className="min-w-0 truncate font-mono text-xs text-muted-foreground/80"
-                            title={copyId}
-                          >
-                            {displayId}
-                          </span>
-                          <button
-                            type="button"
-                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/50 opacity-70 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                            aria-label="复制订单编号"
-                            onClick={() => copyOrderId(copyId)}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </button>
-                        </div>
                       </TableCell>
                       <TableCell className="min-w-0">
                         {isBadminton ? (
@@ -1113,10 +1090,10 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           })()
                         )}
                       </TableCell>
-                      <TableCell className="min-w-0 max-w-[10rem]">
+                      <TableCell className="min-w-0">
                         {notePreview ? (
                           <span
-                            className="block max-w-full overflow-hidden text-sm leading-snug text-muted-foreground line-clamp-2 break-all"
+                            className="block max-w-[14rem] overflow-hidden text-sm leading-snug text-muted-foreground line-clamp-2 break-all"
                             title={noteFull}
                           >
                             {notePreview}
