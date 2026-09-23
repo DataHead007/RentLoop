@@ -16,6 +16,7 @@ import {
 import { formatCurrency, formatDateShort, getDaysUntilEnd, getDaysUntilStart } from '@/lib/utils/format'
 import { formatProvinceCityLine } from '@/lib/utils/addressRegion'
 import { cn } from '@/lib/utils'
+import { getOrderListNetProfit, getOrderListNetProfitTitle } from '@/lib/orders/orderListProfit'
 
 type ShipSuggestion = {
   recommendShipBy: string
@@ -86,6 +87,7 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
     st && et ? `${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : st ? String(st).slice(0, 5) : ''
   const noteFull = order.notes?.trim() || ''
   const notePreview = noteFull.replace(/\s+/g, ' ')
+  const netProfit = getOrderListNetProfit(order)
 
   const dateBlock = isBadminton ? (
     <div className="text-sm leading-snug">
@@ -282,6 +284,18 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
           <div>
             <span className="text-muted-foreground">总金额 </span>
             <span className="font-semibold tabular-nums">{formatCurrency(order.total_amount)}</span>
+          </div>
+          <div title={getOrderListNetProfitTitle(order)}>
+            <span className="text-muted-foreground">净利润 </span>
+            <span
+              className={cn(
+                'font-semibold tabular-nums',
+                netProfit > 0 && 'text-emerald-600',
+                netProfit < 0 && 'text-red-600'
+              )}
+            >
+              {formatCurrency(netProfit)}
+            </span>
           </div>
           {!isBadmintonOnlyView && (
             <div>
