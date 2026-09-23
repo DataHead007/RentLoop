@@ -34,6 +34,7 @@ import {
   RENTAL_COMPENSATION_INCOME_CATEGORY,
   RENTAL_MAINTENANCE_EXPENSE_CATEGORY,
 } from '@/lib/orders/rentalCompensationStats'
+import { getOrderListNetProfit, getOrderListNetProfitTitle, getOrderListProfitCost } from '@/lib/orders/orderListProfit'
 
 type ShipSuggestion = {
   recommendShipBy: string
@@ -273,14 +274,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
 
       totalAmount += amount
       totalIncome += amount
-
-      const shipping = Number(order.total_shipping_cost) || 0
-      // 利润成本：第三方只计实际租赁成本；付供应商押金可退，不计入利润
-      const thirdPartyCost = (order.third_party_rentals || []).reduce(
-        (sum, r) => sum + (r.rental_cost ?? 0),
-        0
-      )
-      totalCost += shipping + thirdPartyCost
+      totalCost += getOrderListProfitCost(order)
 
       if (status === 'in_progress' || status === 'confirmed') {
         totalDeposit += deposit
@@ -910,6 +904,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                   </TableHead>
                   <TableHead className="min-w-0">备注</TableHead>
                   <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">总金额</TableHead>
+                  <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">净利润</TableHead>
                   {!isBadmintonOnlyView && <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">押金</TableHead>}
                   <TableHead className="w-24 shrink-0">状态</TableHead>
                   <TableHead
@@ -938,6 +933,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                     st && et ? `${String(st).slice(0, 5)}–${String(et).slice(0, 5)}` : st ? String(st).slice(0, 5) : ''
                   const noteFull = order.notes?.trim() || ''
                   const notePreview = noteFull.replace(/\s+/g, ' ')
+                  const netProfit = getOrderListNetProfit(order)
 
                   return (
                     <TableRow
@@ -1104,6 +1100,16 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums whitespace-nowrap">
                         {formatCurrency(order.total_amount)}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right font-medium tabular-nums whitespace-nowrap',
+                          netProfit > 0 && 'text-emerald-600',
+                          netProfit < 0 && 'text-red-600'
+                        )}
+                        title={getOrderListNetProfitTitle(order)}
+                      >
+                        {formatCurrency(netProfit)}
                       </TableCell>
                       {!isBadmintonOnlyView && (
                         <TableCell className="text-right tabular-nums whitespace-nowrap">
