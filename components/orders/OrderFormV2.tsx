@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import type { Item, Order } from '@/lib/types/database'
+import { DEFAULT_FEE_RATE, calculateNetAmountFromSubtotal } from '@/lib/orders/feeRate'
 
 /** 带占用信息的资产（API 返回） */
 interface ItemWithOccupancy extends Item {
@@ -34,7 +35,7 @@ interface ItemWithOccupancy extends Item {
 interface OrderItemForm {
   item_id: string
   subtotal: number // 总租金（用户输入）
-  fee_rate: number | null // 手续费率（null 表示使用自动判断）
+  fee_rate: number | null // 手续费率（null 表示使用默认 1.6%）
   deposit: number
   quantity: number
   notes: string
@@ -209,7 +210,6 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
   const [quickInputMimeType, setQuickInputMimeType] = useState<string>('image/png')
   const [isParsingOrder, setIsParsingOrder] = useState(false)
   const [aiToastMessage, setAiToastMessage] = useState<string | null>(null)
-  const [monthlyOrderCount, setMonthlyOrderCount] = useState<number | null>(null) // 当月订单数量
   const [existingOrderStatus, setExistingOrderStatus] = useState<Order['status'] | null>(null) // 编辑时保留原订单状态
   const [formData, setFormData] = useState<OrderFormData>({
     customer_name: '',
@@ -228,7 +228,6 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
   const createIdempotencyKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    loadMonthlyOrderCount()
     if (orderId) {
       loadOrder()
     } else {
@@ -243,37 +242,14 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
     }
   }, [formData.start_date?.getTime(), formData.end_date?.getTime()])
 
-  // 加载当月订单数量（用于自动判断费率）
-  async function loadMonthlyOrderCount() {
-    try {
-      const now = new Date()
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-      
-      const response = await fetch(
-        `/api/orders?startDate=${startOfMonth.toISOString().split('T')[0]}&endDate=${endOfMonth.toISOString().split('T')[0]}`
-      )
-      if (response.ok) {
-        const orders = await response.json()
-        setMonthlyOrderCount(orders.length)
-      }
-    } catch (error) {
-      console.error('Failed to load monthly order count:', error)
-    }
-  }
-
-  // 获取推荐费率（根据当月订单数量）
+  // 默认手续费率固定 1.6%（仍可在表单中手动改）
   function getRecommendedFeeRate(): number {
-    if (monthlyOrderCount === null) return 0.006 // 默认 0.6%
-    return monthlyOrderCount > 10 ? 0.016 : 0.006 // 超过10单用1.6%，否则0.6%
+    return DEFAULT_FEE_RATE
   }
 
-  // 计算实际租金
+  // 计算实际租金（扣除手续费后）
   function calculateNetAmount(subtotal: number, feeRate: number | null): number {
-    if (feeRate === null || feeRate === undefined) {
-      feeRate = getRecommendedFeeRate()
-    }
-    return Math.round(subtotal * (1 - feeRate) * 100) / 100
+    return calculateNetAmountFromSubtotal(subtotal, feeRate)
   }
 
   async function loadOrder() {
@@ -411,7 +387,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
     const newItem: OrderItemForm = {
       item_id: '',
       subtotal: 0,
-      fee_rate: prev?.fee_rate ?? 0.006,
+      fee_rate: prev?.fee_rate ?? DEFAULT_FEE_RATE,
       deposit: prev?.deposit ?? 0,
       quantity: prev?.quantity ?? 1,
       notes: '',
@@ -471,7 +447,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
     newItems.splice(index + 1, 0, {
       item_id: '',
       subtotal: 0,
-      fee_rate: prev?.fee_rate ?? 0.006,
+      fee_rate: prev?.fee_rate ?? DEFAULT_FEE_RATE,
       deposit: prev?.deposit ?? 0,
       quantity: prev?.quantity ?? 1,
       notes: '',
@@ -502,7 +478,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
     newItems.splice(index + 1, 0, {
       item_id: '',
       subtotal: 0,
-      fee_rate: prev?.fee_rate ?? 0.006,
+      fee_rate: prev?.fee_rate ?? DEFAULT_FEE_RATE,
       deposit: prev?.deposit ?? 0,
       quantity: prev?.quantity ?? 1,
       notes: '',
@@ -723,7 +699,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
           // 从总租金计算日租金（作为参考指标）
           const daily_rate = calculateDailyRate(item.subtotal, days)
           
-          // 确定手续费率（如果为 null，使用自动判断的费率）
+          // 确定手续费率（如果为 null，使用默认 1.6%）
           const feeRate = item.fee_rate !== null ? item.fee_rate : getRecommendedFeeRate()
           
           // 计算实际租金（扣除手续费后）
@@ -1395,7 +1371,7 @@ export function OrderFormV2({ orderId, onSuccess, afterSubmitRedirect = '/orders
                         <SelectValue placeholder="选择费率" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="auto">自动</SelectItem>
+                        <SelectItem value="auto">默认 1.6%</SelectItem>
                         <SelectItem value="0">0%</SelectItem>
                         <SelectItem value="0.6">0.6%</SelectItem>
                         <SelectItem value="1.6">1.6%</SelectItem>
@@ -1694,8 +1670,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="auto">
-                            自动判断 ({getRecommendedFeeRate() === 0.006 ? '0.6%' : '1.6%'})
-                            {monthlyOrderCount !== null && ` - 本月${monthlyOrderCount}单`}
+                            默认 1.6%
                           </SelectItem>
                           <SelectItem value="0">0% (无手续费)</SelectItem>
                           <SelectItem value="0.6">0.6% (标准费率)</SelectItem>
@@ -1734,7 +1709,7 @@ value={item.device_id && item.device_id.trim() !== '' ? item.device_id : '__none
                     </div>
                     {item.fee_rate === null && (
                       <p className="text-xs text-muted-foreground">
-                        将根据本月订单数量自动选择费率（{monthlyOrderCount !== null && monthlyOrderCount > 10 ? '本月超过10单，使用1.6%' : '本月不超过10单，使用0.6%'}）
+                        未指定时默认使用 1.6% 手续费
                       </p>
                     )}
                   </div>

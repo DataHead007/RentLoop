@@ -34,7 +34,7 @@ import {
   RENTAL_COMPENSATION_INCOME_CATEGORY,
   RENTAL_MAINTENANCE_EXPENSE_CATEGORY,
 } from '@/lib/orders/rentalCompensationStats'
-import { getOrderListNetProfit, getOrderListNetProfitTitle, getOrderListProfitCost } from '@/lib/orders/orderListProfit'
+import { getOrderListNetProfit, getOrderListNetProfitTitle } from '@/lib/orders/orderListProfit'
 
 type ShipSuggestion = {
   recommendShipBy: string
@@ -256,8 +256,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
     let inProgressAmount = 0
     let completedAmount = 0
     let cancelledAmount = 0
-    let totalCost = 0  // 物流 + 第三方租赁等成本
-    let totalIncome = 0    // 订单金额视为收入
+    let profit = 0
 
     const statusCounts = {
       pending: 0,
@@ -273,8 +272,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
       const status = order.status
 
       totalAmount += amount
-      totalIncome += amount
-      totalCost += getOrderListProfitCost(order)
+      profit += getOrderListNetProfit(order)
 
       if (status === 'in_progress' || status === 'confirmed') {
         totalDeposit += deposit
@@ -297,8 +295,6 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
       }
     })
 
-    const profit = totalIncome - totalCost
-
     return {
       totalAmount,
       totalDeposit,
@@ -309,8 +305,6 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
       completedAmount,
       cancelledAmount,
       totalOrders: orders.length,
-      totalIncome,
-      totalCost,
       profit,
     }
   }, [orders])
@@ -826,7 +820,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
 
           <Card className="max-w-md">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">利润（租金收入－成本）</CardTitle>
+              <CardTitle className="text-sm font-medium">净利润（到账净额－成本）</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -834,8 +828,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                 {formatCurrency(stats.profit)}
               </div>
               <p className="text-xs text-muted-foreground">
-                租金 {formatCurrency(stats.totalIncome)} － 成本（物流+第三方转租，不含可退押金）{' '}
-                {formatCurrency(stats.totalCost)}
+                到账净额（已扣手续费）－ 物流 － 第三方转租；不含维护/赔偿与可退押金
               </p>
               {showCompensationStats ? (
                 <p className="mt-1 text-[10px] text-muted-foreground">不含赔偿与维修，见上排两项独立统计</p>
