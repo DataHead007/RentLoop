@@ -862,8 +862,9 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
             <CardTitle>订单列表</CardTitle>
             <CardDescription>共 {orders.length} 个订单</CardDescription>
           </CardHeader>
-          <CardContent className="min-w-0 px-4 pb-6 pt-0 sm:px-6">
-            <div className="space-y-3 lg:hidden">
+          <CardContent className="min-w-0 px-3 pb-5 pt-0 sm:px-4 xl:px-6">
+            {/* iPad（含 11 寸横屏）用卡片，避免多列表格把设备名挤成竖排字 */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:hidden">
               {sortedOrders.map((order) => (
                 <OrderListMobileCard
                   key={order.id}
@@ -885,25 +886,27 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                 />
               ))}
             </div>
-            <div className="hidden min-w-0 lg:block">
-            <Table className="table-fixed !min-w-0 w-full [&_td]:align-middle [&_td]:px-2.5 [&_td]:py-2.5 [&_th]:px-2.5 [&_th]:py-2.5">
+            <div className="hidden min-w-0 xl:block">
+            <Table className="w-full min-w-[68rem] table-fixed [&_td]:align-middle [&_td]:px-2 [&_td]:py-2.5 [&_th]:px-2 [&_th]:py-2.5">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[4.5rem] shrink-0">类型</TableHead>
-                  <TableHead className="min-w-0">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
-                  <TableHead className="min-w-0 w-[7rem]">客户</TableHead>
-                  <TableHead className={cn('shrink-0 whitespace-nowrap', isBadmintonOnlyView ? 'w-[7.5rem]' : 'min-w-0')}>
+                  <TableHead className="w-16 shrink-0">类型</TableHead>
+                  <TableHead className="w-[13rem]">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
+                  <TableHead className="w-[8rem]">客户</TableHead>
+                  <TableHead className={cn('shrink-0', isBadmintonOnlyView ? 'w-[7.5rem]' : 'w-[11rem]')}>
                     {isBadmintonOnlyView ? '上课时间' : '日期'}
                   </TableHead>
-                  <TableHead className="min-w-0">备注</TableHead>
-                  <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">总金额</TableHead>
-                  <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">净利润</TableHead>
-                  {!isBadmintonOnlyView && <TableHead className="w-24 shrink-0 whitespace-nowrap text-right">押金</TableHead>}
-                  <TableHead className="w-24 shrink-0">状态</TableHead>
+                  <TableHead className="w-[8rem]">备注</TableHead>
+                  <TableHead className="w-[5.5rem] shrink-0 whitespace-nowrap text-right">总金额</TableHead>
+                  <TableHead className="w-[5.5rem] shrink-0 whitespace-nowrap text-right">净利润</TableHead>
+                  {!isBadmintonOnlyView && (
+                    <TableHead className="w-[5.5rem] shrink-0 whitespace-nowrap text-right">押金</TableHead>
+                  )}
+                  <TableHead className="w-[4.5rem] shrink-0">状态</TableHead>
                   <TableHead
                     className={cn(
                       'shrink-0 text-right',
-                      isBadmintonOnlyView ? 'w-[5.5rem]' : 'min-w-[10rem] w-[11rem]'
+                      isBadmintonOnlyView ? 'w-[5.5rem]' : 'w-[10.5rem]'
                     )}
                   >
                     操作
@@ -938,27 +941,40 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           {isBadminton ? '羽毛球' : '租赁'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="min-w-0">
+                      <TableCell className="w-[13rem] max-w-[13rem]">
                         {isBadminton ? (
-                          <div className="min-w-0 break-words">
-                            <div className="text-sm font-semibold leading-snug text-foreground">
+                          <div className="min-w-0">
+                            <div
+                              className="truncate text-sm font-semibold leading-snug text-foreground"
+                              title={(order as any).service_type || undefined}
+                            >
                               {(order as any).service_type || '-'}
                             </div>
-                            <div className="text-xs leading-snug text-muted-foreground">
+                            <div
+                              className="truncate text-xs leading-snug text-muted-foreground"
+                              title={(order as any).location || undefined}
+                            >
                               {(order as any).location || '-'}
                             </div>
                           </div>
                         ) : firstItem ? (
                           <div className="flex min-w-0 items-center gap-2">
                             {categoryIcon && <span className="shrink-0">{categoryIcon}</span>}
-                            <div className="min-w-0 break-words">
-                              <div className="text-sm font-semibold leading-snug text-foreground">
+                            <div className="min-w-0">
+                              <div
+                                className="truncate text-sm font-semibold leading-snug text-foreground"
+                                title={firstItem.short_name?.trim() || firstItem.name}
+                              >
                                 {firstItem.short_name?.trim() || firstItem.name}
                               </div>
                               {firstItem.category && (
-                                <div className="text-xs leading-snug text-muted-foreground">{firstItem.category.name}</div>
+                                <div className="truncate text-xs leading-snug text-muted-foreground">
+                                  {firstItem.category.name}
+                                </div>
                               )}
-                              {itemCount > 1 && <div className="mt-0.5 text-xs text-muted-foreground">等 {itemCount} 项</div>}
+                              {itemCount > 1 && (
+                                <div className="mt-0.5 text-xs text-muted-foreground">等 {itemCount} 项</div>
+                              )}
                             </div>
                           </div>
                         ) : (
@@ -1079,10 +1095,10 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           })()
                         )}
                       </TableCell>
-                      <TableCell className="min-w-0">
+                      <TableCell className="w-[8rem] max-w-[8rem]">
                         {notePreview ? (
                           <span
-                            className="block max-w-[14rem] overflow-hidden text-sm leading-snug text-muted-foreground line-clamp-2 break-all"
+                            className="block overflow-hidden text-sm leading-snug text-muted-foreground line-clamp-2 break-words"
                             title={noteFull}
                           >
                             {notePreview}

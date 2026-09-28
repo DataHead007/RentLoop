@@ -10,7 +10,7 @@ export function PlateShell({ children, className }: PlateShellProps) {
   return (
     <div
       className={cn(
-        'container mx-auto min-w-0 max-w-full px-3 pt-3 pb-4 sm:px-4 md:px-6 md:pt-4 md:pb-6',
+        'container mx-auto min-w-0 max-w-full px-2.5 pt-3 pb-4 sm:px-4 md:px-4 lg:px-5 xl:px-6 md:pt-4 md:pb-6',
         className
       )}
     >
