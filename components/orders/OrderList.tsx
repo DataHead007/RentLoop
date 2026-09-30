@@ -961,12 +961,14 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           <div className="flex min-w-0 items-center gap-2">
                             {categoryIcon && <span className="shrink-0">{categoryIcon}</span>}
                             <div className="min-w-0">
-                              <div
-                                className="truncate text-sm font-semibold leading-snug text-foreground"
+                              <Link
+                                href={`/items/${firstItem.id}/edit`}
+                                className="block truncate text-sm font-semibold leading-snug text-foreground underline-offset-2 hover:underline hover:text-primary"
                                 title={firstItem.short_name?.trim() || firstItem.name}
+                                onClick={(e) => e.stopPropagation()}
                               >
                                 {firstItem.short_name?.trim() || firstItem.name}
-                              </div>
+                              </Link>
                               {firstItem.category && (
                                 <div className="truncate text-xs leading-snug text-muted-foreground">
                                   {firstItem.category.name}

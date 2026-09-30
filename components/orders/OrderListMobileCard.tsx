@@ -218,7 +218,13 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
               <div className="flex min-w-0 items-start gap-2">
                 {categoryIcon && <span className="mt-0.5 shrink-0">{categoryIcon}</span>}
                 <div className="min-w-0">
-                  <div className="font-semibold text-foreground">{firstItem.short_name?.trim() || firstItem.name}</div>
+                  <Link
+                    href={`/items/${firstItem.id}/edit`}
+                    className="font-semibold text-foreground underline-offset-2 hover:underline hover:text-primary"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {firstItem.short_name?.trim() || firstItem.name}
+                  </Link>
                   {firstItem.category && (
                     <div className="text-xs text-muted-foreground">{firstItem.category.name}</div>
                   )}
