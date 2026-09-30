@@ -220,7 +220,7 @@ export function OrderListMobileCard(props: OrderListMobileCardProps) {
                 <div className="min-w-0">
                   <Link
                     href={`/items/${firstItem.id}/edit`}
-                    className="font-semibold text-foreground underline-offset-2 hover:underline hover:text-primary"
+                    className="font-semibold text-primary underline-offset-2 hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {firstItem.short_name?.trim() || firstItem.name}

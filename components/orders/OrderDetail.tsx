@@ -655,7 +655,7 @@ export function OrderDetail() {
                             {item.item?.id ? (
                               <Link
                                 href={`/items/${item.item.id}/edit`}
-                                className="underline-offset-2 hover:underline hover:text-primary"
+                                className="text-primary underline-offset-2 hover:underline"
                               >
                                 {item.item.short_name?.trim() || item.item.name}
                               </Link>

@@ -963,7 +963,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                             <div className="min-w-0">
                               <Link
                                 href={`/items/${firstItem.id}/edit`}
-                                className="block truncate text-sm font-semibold leading-snug text-foreground underline-offset-2 hover:underline hover:text-primary"
+                                className="block truncate text-sm font-semibold leading-snug text-primary underline-offset-2 hover:underline"
                                 title={firstItem.short_name?.trim() || firstItem.name}
                                 onClick={(e) => e.stopPropagation()}
                               >
