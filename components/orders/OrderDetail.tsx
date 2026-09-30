@@ -20,6 +20,7 @@ import type { Order } from '@/lib/types/database'
 import { formatCurrency, formatDateShort, getDaysUntilStart, getDaysUntilEnd } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
+import Link from 'next/link'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -651,7 +652,16 @@ export function OrderDetail() {
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">
-                            {(item.item?.short_name?.trim() || item.item?.name) ?? '-'}
+                            {item.item?.id ? (
+                              <Link
+                                href={`/items/${item.item.id}/edit`}
+                                className="underline-offset-2 hover:underline hover:text-primary"
+                              >
+                                {item.item.short_name?.trim() || item.item.name}
+                              </Link>
+                            ) : (
+                              (item.item?.short_name?.trim() || item.item?.name) ?? '-'
+                            )}
                             {item.item?.brand && item.item?.model && (
                               <div className="text-sm text-muted-foreground">
                                 {item.item.brand} {item.item.model}
