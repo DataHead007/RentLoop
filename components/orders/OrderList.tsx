@@ -862,7 +862,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
             <CardTitle>订单列表</CardTitle>
             <CardDescription>共 {orders.length} 个订单</CardDescription>
           </CardHeader>
-          <CardContent className="min-w-0 px-3 pb-5 pt-0 sm:px-4 xl:px-6">
+          <CardContent className="min-w-0 overflow-x-auto px-3 pb-5 pt-0 sm:px-4 xl:px-6">
             {/* iPad（含 11 寸横屏）用卡片，避免多列表格把设备名挤成竖排字 */}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:hidden">
               {sortedOrders.map((order) => (
@@ -887,26 +887,26 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
               ))}
             </div>
             <div className="hidden min-w-0 xl:block">
-            <Table className="w-full min-w-[68rem] table-fixed [&_td]:align-middle [&_td]:px-2 [&_td]:py-2.5 [&_th]:px-2 [&_th]:py-2.5">
+            <Table className="!min-w-0 w-full table-fixed [&_td]:align-middle [&_td]:px-2 [&_td]:py-2.5 [&_th]:px-2 [&_th]:py-2.5">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-16 shrink-0">类型</TableHead>
-                  <TableHead className="w-[13rem]">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
-                  <TableHead className="w-[8rem]">客户</TableHead>
-                  <TableHead className={cn('shrink-0', isBadmintonOnlyView ? 'w-[7.5rem]' : 'w-[11rem]')}>
+                  <TableHead className="w-14">类型</TableHead>
+                  <TableHead className="w-[18%] min-w-0">{isBadmintonOnlyView ? '服务' : '设备/服务'}</TableHead>
+                  <TableHead className="w-[12%] min-w-0">客户</TableHead>
+                  <TableHead className={cn('min-w-0', isBadmintonOnlyView ? 'w-[10%]' : 'w-[16%]')}>
                     {isBadmintonOnlyView ? '上课时间' : '日期'}
                   </TableHead>
-                  <TableHead className="w-[8rem]">备注</TableHead>
-                  <TableHead className="w-[5.5rem] shrink-0 whitespace-nowrap text-right">总金额</TableHead>
-                  <TableHead className="w-[5.5rem] shrink-0 whitespace-nowrap text-right">净利润</TableHead>
+                  <TableHead className="w-[10%] min-w-0">备注</TableHead>
+                  <TableHead className="w-20 whitespace-nowrap text-right">总金额</TableHead>
+                  <TableHead className="w-20 whitespace-nowrap text-right">净利润</TableHead>
                   {!isBadmintonOnlyView && (
-                    <TableHead className="w-[5.5rem] shrink-0 whitespace-nowrap text-right">押金</TableHead>
+                    <TableHead className="w-20 whitespace-nowrap text-right">押金</TableHead>
                   )}
-                  <TableHead className="w-[4.5rem] shrink-0">状态</TableHead>
+                  <TableHead className="w-[4.75rem]">状态</TableHead>
                   <TableHead
                     className={cn(
-                      'shrink-0 text-right',
-                      isBadmintonOnlyView ? 'w-[5.5rem]' : 'w-[10.5rem]'
+                      'text-right',
+                      isBadmintonOnlyView ? 'w-[5.5rem]' : 'w-[10rem]'
                     )}
                   >
                     操作
@@ -941,7 +941,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           {isBadminton ? '羽毛球' : '租赁'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="w-[13rem] max-w-[13rem]">
+                      <TableCell className="min-w-0 max-w-0">
                         {isBadminton ? (
                           <div className="min-w-0">
                             <div
@@ -1095,7 +1095,7 @@ export function OrderList({ module = 'hub' }: OrderListProps) {
                           })()
                         )}
                       </TableCell>
-                      <TableCell className="w-[8rem] max-w-[8rem]">
+                      <TableCell className="min-w-0 max-w-0">
                         {notePreview ? (
                           <span
                             className="block overflow-hidden text-sm leading-snug text-muted-foreground line-clamp-2 break-words"
