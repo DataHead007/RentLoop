@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -24,8 +25,14 @@ function ScheduleTooltipBody({ schedules }: { schedules: ItemRentalScheduleEntry
   return (
     <ul className="space-y-1 text-xs leading-snug">
       {sorted.slice(0, 4).map((entry) => (
-        <li key={`${entry.order_id}-${entry.start_date}`} className="text-foreground">
-          {formatItemRentalScheduleLine(entry)}
+        <li key={`${entry.order_id}-${entry.start_date}`}>
+          <Link
+            href={`/orders/${entry.order_id}`}
+            className="block rounded-sm px-0.5 py-0.5 text-primary underline-offset-2 hover:bg-accent/60 hover:underline"
+            title="查看对应订单"
+          >
+            {formatItemRentalScheduleLine(entry)}
+          </Link>
         </li>
       ))}
       {sorted.length > 4 ? (
